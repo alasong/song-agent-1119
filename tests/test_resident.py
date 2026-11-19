@@ -65,6 +65,13 @@ class ResidentTest(unittest.TestCase):
         self.assertEqual(summary["ticks"], 0)
         self.assertGreaterEqual(summary["hours"], 1.0)
 
+    def test_runs_full_window_not_early_exit(self):
+        """回归测试：循环不能因为「下一次 sleep 越过 deadline」就提前收工。"""
+        r = Resident(self.led, policy,
+                     ResidentConfig(interval_s=0.05, max_hours=0.00028))  # ~1 秒
+        summary = r.run()
+        self.assertGreaterEqual(summary["hours"], 0.00028, "提前退出了，24h 判据会永远判不过")
+
     def test_max_hours_respected(self):
         r = Resident(self.led, policy, ResidentConfig(interval_s=1, max_hours=0.0001))
         summary = r.run()

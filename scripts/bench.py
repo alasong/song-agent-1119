@@ -47,7 +47,10 @@ def g1_autonomy() -> dict:
         hours = data.get("running_hours")
         ticks = data.get("ticks", 0)
         if hours is not None:
-            progress = f"；进行中：已跑 {hours}h / 24h，{ticks} 轮"
+            remain = max(0.0, 24 - float(hours))
+            eta = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() + remain * 3600))
+            progress = (f"；进行中：已跑 {hours}h / 24h（{ticks} 轮），"
+                        f"还需 {remain:.2f}h，预计 {eta} 完成（睡眠会顺延）")
         else:
             progress = f"；进行中：已 {ticks} 轮（旧检查点无时长字段）"
     return {

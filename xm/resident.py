@@ -76,21 +76,24 @@ class Resident:
             "last": self.history[-1] if self.history else None,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def _elapsed_h(self) -> float:
+        return self.cfg.already_elapsed_h + (time.monotonic() - self.session_mono) / 3600
+
     def run(self) -> dict:
-        started = time.time()
-        remaining_h = max(0.0, self.cfg.max_hours - self.cfg.already_elapsed_h)
-        deadline = started + remaining_h * 3600
+        started = time.monotonic()
         ticks = 0
-        while time.time() < deadline:
+        # 关键：必须跑满窗口，不能因为「下一次睡眠会越过 deadline」就提前收工——
+        # 那会算出 23.8h，24h 判据永远过不了。
+        while self._elapsed_h() < self.cfg.max_hours:
             if self.cfg.max_ticks is not None and ticks >= self.cfg.max_ticks:
                 break
             self.tick()
             ticks += 1
-            if time.time() + self.cfg.interval_s > deadline:
+            remaining_s = (self.cfg.max_hours - self._elapsed_h()) * 3600
+            if remaining_s <= 0:
                 break
-            time.sleep(self.cfg.interval_s)
-        elapsed_hours = round(self.cfg.already_elapsed_h
-                              + (time.monotonic() - self.session_mono) / 3600, 4)
+            time.sleep(min(self.cfg.interval_s, remaining_s))
+        elapsed_hours = round(self._elapsed_h(), 4)
         slept_hours = round(self.cfg.already_slept_h, 4)
         return {
             "hours": elapsed_hours,
