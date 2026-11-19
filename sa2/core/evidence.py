@@ -149,3 +149,23 @@ def checker(book: EvidenceBook):
     def run(text: str) -> list[str]:
         return citation_problems(text, book)
     return run
+
+def check_citations(text: str, spec: dict | None = None) -> list[str]:
+    """交付判据：引用条数够不够、每条在不在台账、取回时间新不新。
+
+    作为一个 callable 判据使用，参数从 spec 来（book / min / max_age_days），
+    所以判据自己带着「台账在哪、要几条」，不把路径写死在代码里。
+    """
+    spec = spec or {}
+    book_path = str(spec.get("book") or "").strip()
+    if not book_path:
+        return ["citations 判据缺 book：不知道该去哪个台账查引用"]
+    book = EvidenceBook(book_path)
+    minimum = int(spec.get("min") or 0)
+    window = int(spec.get("max_age_days") or DEFAULT_MAX_AGE_DAYS)
+    found = markers(text)
+    problems = citation_problems(text, book, max_age_days=window)
+    if len(found) < minimum:
+        problems.insert(0, f"引用 {len(found)} 条 < 要求 {minimum} 条——"
+                           f"没有证据支撑的交付不算交付")
+    return problems

@@ -29,13 +29,15 @@ class PDCA:
                  vocab, usage: list[dict] | None = None,
                  max_stage_attempts: int = 2, cases: CaseBook | None = None,
                  state_path: str | Path | None = None, resume: bool = False,
-                 artifact_dir: str | Path | None = None, parallel: bool = False):
+                 artifact_dir: str | Path | None = None, parallel: bool = False,
+                 hand=None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
         带上它的理由很实际：sa 1.0 的整篇重写虽然也带反馈，但代价是整篇；
         2.0 只重做一格，如果这一格不知道上次错在哪，等于把省下的钱又亏回去。
         """
+        self.hand = hand          # 角色手上有工具时，派活前先真的取一次（结果进上游与证据台账）
         self.judge = judge
         self.ledger = ledger
         self.plan = plan
@@ -99,9 +101,11 @@ class PDCA:
                         return self._report(False, budget.why(f"{stage.name} 之前"),
                                             redone=redone, rejects=rejects,
                                             dispatches=dispatches, budget=budget)
+                    materials = {role.name: self._run_hand(role, stage.name) for role in roles}
                     with ThreadPoolExecutor(max_workers=len(roles)) as pool:
                         futures = [(role, pool.submit(
-                            self.produce, role, stage.name, text, attempt, feedback,
+                            self.produce, role, stage.name,
+                            self._with_material(text, materials[role.name]), attempt, feedback,
                             requirements if role.name == writer else self._supplement(writer)))
                                    for role in roles]
                         for role, future in futures:
@@ -119,7 +123,9 @@ class PDCA:
                             return self._report(False, budget.why(f"{stage.name}·{role.name} 之前"),
                                                 redone=redone, rejects=rejects,
                                                 dispatches=dispatches, budget=budget)
-                        out = self.produce(role, stage.name, text, attempt, feedback,
+                        material = self._run_hand(role, stage.name)
+                        out = self.produce(role, stage.name, self._with_material(text, material),
+                                       attempt, feedback,
                                        requirements if role.name == writer else self._supplement(writer))
                         budget.note(out)
                         dispatches += 1
@@ -193,6 +199,28 @@ class PDCA:
                             redone=redone, rejects=rejects, dispatches=dispatches,
                             budget=budget, problems=problems, evidence=evidence,
                             chars=len(text), ran=sorted(ran), text=text)
+
+    def _run_hand(self, role, stage: str) -> str:
+        """角色挂了工具就先跑一次手，取回的素材与证据编号进上游。
+
+        为什么放在派活前而不是让写手自己「记得去查」：模型没有手，它只能声称查过。
+        取数、落盘、打戳都在这里发生，写手拿到的是一段可以引用的素材。
+        """
+        if self.hand is None or not getattr(role, "tools", ()):
+            return ""
+        try:
+            material = self.hand(role, stage) or ""
+        except Exception as exc:            # 手失败要大声：宁可这一格外，不静默降级
+            self.ledger.append("hand_failed", role.name,
+                               {"stage": stage, "error": f"{type(exc).__name__}: {exc}"})
+            raise
+        if material:
+            self.ledger.append("hand", role.name, {"stage": stage, "chars": len(material)})
+        return material
+
+    @staticmethod
+    def _with_material(upstream: str, material: str) -> str:
+        return f"{material}\n\n{upstream}" if material else upstream
 
     def _writer(self, stage) -> str:
         """本阶段谁执笔写标题：优先 executor，没有就第一个角色。

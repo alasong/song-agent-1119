@@ -14,6 +14,7 @@ sa 1.0 把「造判据」和「判判据」放在同一个模块里（`xm/criter
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
 import re
 import subprocess
@@ -97,8 +98,10 @@ class Judge:
             raise CriteriaError(f"判据 {crit.name!r} 没跑过三反例自测，不许登记")
         old = self._items.get(crit.name)
         if old is not None and old.kind == crit.kind and old.spec == crit.spec \
-                and old.scope == crit.scope:
+                and old.scope == crit.scope and old.dims == crit.dims:
             # 幂等：同一份判据再登记一次不该升版本，也不该新增历史。
+            # dims 必须一起比：跨运行复用同形判据时，别轮的维度声明不该留在这一轮身上
+            # （实测踩过：上一轮的 maintainability 让这一轮前置门直接判红、0 次派活）。
             # 跨运行复用能不能省事，就看这一条有没有生效。
             if self.ledger:
                 self.ledger.append("criteria_reused", proposer,
@@ -185,7 +188,10 @@ class Judge:
         if not module_name or not func_name:
             return ["callable 形态要求 target 写成 module:function"]
         func = getattr(importlib.import_module(module_name), func_name)
-        result = func(text)
+        # 有的判据需要自己的参数（台账路径、条数门槛）：收两个参数时就把它传进去，
+        # 不然这些值只能写死在代码里，又变成一处硬编码。
+        takes_spec = len(inspect.signature(func).parameters) >= 2
+        result = func(text, spec) if takes_spec else func(text)
         if isinstance(result, bool):
             return [] if result else ["callable 判定为不通过"]
         return [str(x) for x in (result or [])]

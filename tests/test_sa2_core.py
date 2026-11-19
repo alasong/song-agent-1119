@@ -191,3 +191,25 @@ def _always_ok(text):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CriteriaReuseTest(unittest.TestCase):
+    """跨运行复用：同形判据可以复用，但别轮的维度声明不许跟着进来。"""
+
+    def test_same_shape_with_different_dims_is_not_reused(self):
+        judge = Judge(authority=("leader",))
+        first = Criterion(name="交付·章节", kind="sections", spec={"required": ["## 一"]},
+                          dims=("correctness", "maintainability"), self_tested=True)
+        judge.register(first, proposer="leader")
+        incoming = Criterion(name="交付·章节", kind="sections", spec={"required": ["## 一"]},
+                             dims=("correctness",), self_tested=True)
+        got = judge.register(incoming, proposer="leader")
+        self.assertEqual(got.dims, ("correctness",), "别轮的维度声明不该留在这一轮身上")
+        self.assertEqual(got.version, 2, "换了维度就是换了判据，要升版本")
+
+    def test_same_shape_and_dims_is_idempotent(self):
+        judge = Judge(authority=("leader",))
+        crit = Criterion(name="交付·章节", kind="sections", spec={"required": ["## 一"]},
+                         dims=("correctness",), self_tested=True)
+        judge.register(crit, proposer="leader")
+        again = judge.register(crit, proposer="leader")
+        self.assertEqual(again.version, 1)

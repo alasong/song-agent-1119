@@ -85,7 +85,9 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
         duty = str(item.get("duty", "")).strip()
         criteria = str(item.get("criteria", "")).strip()
         budget = int(item.get("budget", 0) or 0)
-        tools = tuple(str(x).strip() for x in (item.get("tools") or []) if str(x).strip())
+        # 模型会照抄提示里的显示格式「名字[能力]」，这里把它剥回名字再校验
+        tools = tuple(re.sub(r"\s*\[[^\]]*\]\s*$", "", str(x).strip())
+                      for x in (item.get("tools") or []) if str(x).strip())
         if not name or not duty or not criteria:
             raise OrgError(f"第 {i} 个角色缺 name/duty/criteria")
         if kind not in KINDS:
@@ -192,7 +194,8 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: i
              require_gates: bool = True, available_tools=None) -> OrgPlan:
     """生成编制。被自己的校验拒了就带着拒收原因重来一次——
     不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。"""
-    tools_text = "、".join(f"{n}[{c}]" for n, c in (available_tools or {}).items())
+    tools_text = "、".join(f"{n}（能力：{c or '未知'}）"
+                          for n, c in (available_tools or {}).items())
     prompt = _org_prompt(goal, budget_cap, criteria, tools_text)
     feedback = ""
     last: OrgError | None = None

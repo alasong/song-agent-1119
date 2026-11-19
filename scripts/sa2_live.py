@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -24,7 +25,9 @@ sys.path.insert(0, str(ROOT))
 
 from sa2.core import gate                         # noqa: E402
 from sa2.core.gate import Declaration             # noqa: E402
-from sa2.core.judge import Judge, replace         # noqa: E402
+from sa2.core.evidence import EvidenceBook, citation_problems     # noqa: E402
+from sa2.core.judge import Criterion, Judge, replace  # noqa: E402
+from sa2 import fetch                              # noqa: E402
 from sa2.core.ledger import Ledger                # noqa: E402
 from sa2.forge import criteria as fc              # noqa: E402
 from sa2.forge import dims as fd                  # noqa: E402
@@ -39,6 +42,7 @@ from sa2.memory.cases import CaseBook             # noqa: E402
 from sa2.memory.tools import ToolStore            # noqa: E402
 from sa2.llm import complete_usage                # noqa: E402
 
+HAND_TOOLS = ("fetch:arxiv",)   # 宿主级的手：要证据的交付，至少得有它
 GOAL = "写一份「Agent 递归自我改进的最小可行实验」方案"
 
 SPEC = """必须包含：## 一、基线
@@ -67,9 +71,58 @@ def _register(judge: Judge, specs) -> list[str]:
     return [c.name for c in specs]
 
 
+def _arxiv_query(llm, goal: str, role) -> str:
+    """让模型写一条检索语句：题面里的缩写（如 RSI）只有它自己分得清是哪一行。"""
+    ask = (f"给 arXiv API 写一条 search_query，主题：{goal}；检索意图：{role.duty}。"
+           f"**只用英文关键词**，不要出现中文；**查询要短：2–4 个词**，不要 AND/OR 列表；"
+           f"只返回一条查询语句（形如 all:\"xxx\"），不要解释。")
+    raw = llm([{"role": "user", "content": ask}], max_tokens=80) or ""
+    first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
+    # 中文关键词在 arXiv 上基本等于零命中：先剥成 ASCII，剥完为空就当场报，不硬查
+    ascii_only = re.sub(r"[^\x20-\x7e]", " ", first).strip()
+    query = re.sub(r"\s+", " ", ascii_only).strip("`").strip()
+    if not query:
+        raise fetch.FetchError(f"模型没给出可用的英文查询（原始：{first[:60]!r}）")
+    return query if ":" in query else f'all:"{query}"'
+
+
+def _simplify(query: str) -> str:
+    """模型爱写一长串布尔表达式，arXiv 上常常零命中。退一步：取第一个引号短语，
+    没有就取前两个英文实词。"""
+    quoted = re.search(r'"([^"]+)"', query)
+    if quoted:
+        return f'all:"{quoted.group(1)}"'
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]+", query)
+             if w.lower() not in {"and", "or", "not", "all", "latest", "recent"}]
+    return f'all:"{" ".join(words[:2])}"' if words else ""
+
+
+def make_hand(llm, goal: str, book: EvidenceBook, content_dir):
+    """手的实现：查一次 arXiv → 落盘打戳成证据 → 交回一段可引用的素材。"""
+    def hand(role, stage: str) -> str:
+        query = _arxiv_query(llm, goal, role)
+        try:
+            items = fetch.arxiv(query, 5)
+        except fetch.FetchError as exc:
+            simple = _simplify(query)
+            if not simple or simple == query:
+                raise fetch.FetchError(f"查询 {query!r} 没取到：{exc}") from exc
+            items = fetch.arxiv(simple, 5)
+            query = simple
+        evs = fetch.record(items, book, content_dir, "leader", start=len(book.all()) + 1)
+        lines = [f"## 已取回的证据（正文只能引用这些编号；查询 {query}）"]
+        for ev, item in zip(evs, items):
+            lines.append(f"[{ev.evidence_id}] {item['title']}（{item['published']}）{item['url']}")
+            lines.append(f"  摘要：{item['summary'][:280]}")
+        return "\n".join(lines)
+    return hand
+
+
 def _tool_caps(store: ToolStore) -> dict[str, str]:
     """工具名 → 能力标签。编制校验靠它判「这个角色手上是不是真有能用的手」。"""
-    return {name: str(entry.get("capability") or "") for name, entry in store.all().items()}
+    caps = {name: str(entry.get("capability") or "") for name, entry in store.all().items()}
+    caps["fetch:arxiv"] = "fetch"   # 宿主级的手：不进工具库，但编制可以把它挂到角色上
+    return caps
 
 
 def shelve(store: ToolStore, path, crit, signature: str):
@@ -101,6 +154,8 @@ def main() -> int:
     ap.add_argument("--fresh", action="store_true", help="不用跨运行判据库")
     ap.add_argument("--resume", default=None, help="从 state.json 续跑")
     ap.add_argument("--parallel", action="store_true", help="同一阶段的角色并发派活")
+    ap.add_argument("--evidence-min", type=int, default=3,
+                    help="交付至少要几条可追引用；0 = 不要求（默认 3）")
     ap.add_argument("--reuse", action="store_true",
                     help="同目标已有判据就复用，不再让模型重新造")
     args = ap.parse_args()
@@ -113,6 +168,7 @@ def main() -> int:
     run_dir = runs_root() / args.name / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(run_dir / "ledger.jsonl")
+    evidence_book = EvidenceBook(run_dir / "evidence.jsonl")
     # 造出来的东西要有家：工具进全局库（不随 run 目录消失），判据的 cmd 指向库里
     tool_store = ToolStore()
 
@@ -158,7 +214,7 @@ def main() -> int:
             except fo.OrgError as exc:
                 org_error = str(exc)
         if plan is None:
-            plan = size.single_plan(provisional)
+            plan = size.single_plan(provisional, tools=HAND_TOOLS if args.evidence_min else ())
             decision = size.SizeDecision("single", "自动阶段判据需要编制：回退单人", args.budget)
 
     # ③a 复用：同目标已登记过判据就直接用，省掉一次模型调用
@@ -254,6 +310,12 @@ def main() -> int:
                 return 1
             delivery_specs = fc.tested_set(cands) if len(cands) > 1 else [fc.tested(cands[0])]
 
+    if args.evidence_min > 0:
+        # 交付必须带可追证据：判据自己带着台账路径与条数门槛，不把数字写死在代码里
+        delivery_specs.append(Criterion(
+            name="交付·引用", kind="callable", dims=(), self_tested=True, scope="delivery",
+            spec={"target": "sa2.core.evidence:check_citations",
+                  "book": str(evidence_book.path), "min": args.evidence_min}))
     _register(judge, delivery_specs)
     if not args.fresh and not args.auto_stages and delivery_specs:
         registry.remember_goal(goal, [c.name for c in delivery_specs])
@@ -313,7 +375,8 @@ def main() -> int:
     pdca = PDCA(judge, ledger, plan, scribe, fd.VOCAB, usage=usage,
                 max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),
-                artifact_dir=run_dir / "stages")
+                artifact_dir=run_dir / "stages",
+                hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"))
     report = pdca.run(decl, evidence=[])
 
     artifact = run_dir / "deliverable.md"
@@ -344,6 +407,8 @@ def main() -> int:
         "org_generated": bool(args.auto_org and not org_error),
         "org_error": org_error,
         "tool": tool_path,
+        "evidence_count": len(evidence_book.all()),
+        "citation_problems": citation_problems(report.get("text") or "", evidence_book),
         "tool_error": tool_error,
         "notes": notes,
         "registry": registry_used,

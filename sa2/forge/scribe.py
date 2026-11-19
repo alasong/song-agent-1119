@@ -52,5 +52,8 @@ class Scribe:
             lines.append(f"## 本阶段的验收要求（逐条满足，判据按它判）\n{requirements.strip()}")
         if feedback.strip():
             lines.append(f"## 上次被拒的原因（重做时必须逐条修掉）\n{feedback.strip()}")
+        lines.append("## 引用规范\n"
+                     "正文里的每条外部事实都要带引用编号，形如 [S1]，编号只能用上游给出的；"
+                     "没有对应证据的地方，不许写「最新」「近期」这类时间判断，也不许自己编日期。")
         lines.append("只写这一阶段的交付物本身，不要解释你在做什么，不要复述要求。")
         return "\n\n".join(lines)

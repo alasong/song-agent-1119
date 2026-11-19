@@ -39,13 +39,14 @@ def decide(decl: Declaration) -> SizeDecision:
     return SizeDecision("single", "单一维度、判据不超过 2 条：先单人", decl.budget_tokens)
 
 
-def single_plan(decl: Declaration) -> OrgPlan:
+def single_plan(decl: Declaration, tools=()) -> OrgPlan:
     """单人编制：一个执行角色、一个阶段。
 
     它不走 `org.parse_plan`（那套校验是给模型生成的编制用的，要求 ≥3 角色），
     但仍然是同一个 OrgPlan 类型——环不需要知道规模。
     """
     role = Role(name="执行", kind="executor", duty="按声明写交付物",
+                tools=tuple(tools),
                 criteria="；".join(decl.criteria), budget=max(1, decl.budget_tokens))
     stage = Stage(name="交付", output=decl.goal, roles=("执行",), gate_criteria=decl.criteria)
     return OrgPlan(goal=decl.goal, roles=(role,), stages=(stage,))
