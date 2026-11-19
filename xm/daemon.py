@@ -90,7 +90,10 @@ class Daemon:
 不要写解释，不要写多个代码块，不要省略任何已有功能。"""
 
     def _parse(self, text: str) -> str | None:
-        blocks = re.findall(r"```[a-zA-Z]*\s*\n(.*?)```", text, re.S)
+        # 允许没闭合的代码块：模型被 max_tokens 截断时内容往往仍可用，
+        # 因为少了一个 ``` 就把整轮判成「没给代码块」，是工具的问题，不是产出的问题。
+        blocks = re.findall(r"```[a-zA-Z]*\s*\n(.*?)(?:```|$)", text, re.S)
+        blocks = [b for b in blocks if b.strip()]
         if not blocks:
             return None
         return max(blocks, key=len)
