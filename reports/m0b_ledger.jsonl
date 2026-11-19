@@ -1,0 +1,6 @@
+{"seq": 1, "ts": 1795074784.221633, "kind": "experiment_start", "actor": "driver", "payload": {"experiment": "M0b-1", "task": "实现 xm/ticket.py"}}
+{"seq": 2, "ts": 1795074784.221953, "kind": "acceptance_red", "actor": "auditor", "payload": {"test": "tests/test_ticket.py", "sha": "d4c643af", "rc": 1}}
+{"seq": 3, "ts": 1795074784.222087, "kind": "autonomous_dispatch", "actor": "exec-a", "payload": {"arm": "A", "role": "executor", "round": 1}}
+{"seq": 4, "ts": 1795074784.222196, "kind": "autonomous_dispatch", "actor": "solo-b2", "payload": {"arm": "B", "role": "solo", "round": 1}}
+{"seq": 5, "ts": 1795074784.222295, "kind": "verifier_verdict", "actor": "verifier", "payload": {"arm": "A", "verdict": "pass", "cheat": false}}
+{"seq": 6, "ts": 1795074784.222393, "kind": "ground_truth", "actor": "auditor", "payload": {"A_rc": 0, "B_rc": 0, "A_sha_ok": true, "B_sha_ok": true}}
