@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from xm.delivery import bare_optimal_lines  # 与交付检查共用一套规则，避免两处各写一份
+from sa2.delivery import bare_optimal_lines  # 与交付检查共用一套规则，避免两处各写一份
 
 CERTAIN = ("已经完全验证", "已证明最优", "保证最优", "绝对正确")
 

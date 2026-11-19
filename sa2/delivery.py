@@ -1,4 +1,7 @@
-"""交付自证：sa 自己的产物也要过三段检查，不能只靠宿主 agent 记得。
+"""交付自证：给领导的交付也要过三段检查，不能只靠记得。
+
+原 `xm/delivery.py` 随 1.0 退役后迁到这里。**它不属于四层**：四层判的是 sa 的产物，
+这里判的是「一条交付文本有没有自证」——宿主与 sa2 共用同一套规则，避免两处各写一份。
 
 这是 DNA #9「交付可自证」的运行时。规则只有五条，每条都能判红：
 
@@ -13,8 +16,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from pathlib import Path
 
 READING = re.compile(r"\d+(?:\.\d+)?\s*(?:次|个|条|分|%|tokens|小时|轮|处|行|人)")
 EVIDENCE = re.compile(
@@ -101,42 +102,3 @@ def check(text: str) -> dict:
         reasons += [f"第 {ln} 行：{ln_text[:60]}" for ln, ln_text in bad[:3]]
 
     return {"ok": not missing, "missing": missing, "reasons": reasons}
-
-@dataclass(frozen=True)
-class RunFacts:
-    """拼自证要用的事实。全部来自运行记录，不由模型提供。"""
-    criteria_ok: bool
-    mode: str                 # single / org
-    calls: int
-    chars: int
-    decision: str             # 为什么这么选
-    rejected: str             # 否掉了什么
-    artifact: str
-    extra: tuple[str, ...] = ()
-
-
-def compose(facts: RunFacts) -> str:
-    """把运行事实拼成三节。缺字段就不编——空证据会被 check() 判红。"""
-    verdict = "exit 0" if facts.criteria_ok else "未通过"
-    conclusion = (f"判据 {verdict}；{facts.mode} 路径；"
-                  f"{facts.calls} 次调用；正文 {facts.chars} 字。")
-    lines = [f"- 选 {facts.mode} → 否掉了{facts.rejected}，因为{facts.decision}。"]
-    evidence = [f"- `check.py` exit {0 if facts.criteria_ok else 1}",
-                f"- 产物 {facts.artifact}",
-                "- 记录 ~/xm-runs/history/history.jsonl"]
-    evidence += [f"- {item}" for item in facts.extra]
-    return ("\n## 结论\n" + conclusion +
-            "\n\n## 依据\n" + "\n".join(lines) +
-            "\n\n## 证据\n" + "\n".join(evidence) + "\n")
-
-
-def attach(path, facts: RunFacts) -> bool:
-    """把自证追加到产物末尾；已有就不再追加（产物是证据，不许重写）。"""
-    target = Path(path)
-    if not target.exists():
-        return False
-    text = target.read_text(encoding="utf-8")
-    if "## 结论" in text and "## 证据" in text:
-        return False
-    target.write_text(text.rstrip() + "\n" + compose(facts), encoding="utf-8")
-    return True

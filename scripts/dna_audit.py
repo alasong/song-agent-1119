@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs" / "AI自治科研组织_准超级智能系统_完整设计文档.md"
-PROD_DIRS = ("xm", "scripts")
+PROD_DIRS = ("sa2", "scripts")  # sa 1.0 的 xm/ 已于 2026-11-20 退役；标尺不变，承载面改为 sa2
 SELF = "scripts/dna_audit.py"  # 审计脚本自己的正则字面量不许参与判定
 
 STATUS_LABEL = {"landed": "落地", "partial": "半", "absent": "零", "unprobed": "无判据"}
@@ -89,7 +89,7 @@ def _scan(pattern: str, dirs=PROD_DIRS):
 
 
 def find(pattern: str, dirs=PROD_DIRS) -> tuple[bool, str]:
-    """在 xm/ 与 scripts/ 的代码里找一行匹配。返回 (是否命中, 首个命中位置)。"""
+    """在 sa2/ 与 scripts/ 的代码里找一行匹配。返回 (是否命中, 首个命中位置)。"""
     for where, _text in _scan(pattern, dirs):
         return True, where
     return False, f"未命中 /{pattern}/"
@@ -106,36 +106,54 @@ def in_file(rel: str, pattern: str) -> tuple[bool, str]:
     return False, f"{rel} 未命中 /{pattern}/"
 
 
+def _import_patterns(module: str) -> list[str]:
+    """点路径模块的各种 import 写法：绝对、相对（`from ..core.ledger import`）、`from X import leaf`。"""
+    parts = module.split(".")
+    leaf = parts[-1]
+    pats: list[str] = []
+    for i in range(len(parts)):
+        dotted = ".".join(parts[i:])
+        pats.append(rf"^\s*from\s+\.*{re.escape(dotted)}\b")
+        pats.append(rf"^\s*import\s+\.*{re.escape(dotted)}\b")
+        if i + 1 < len(parts):
+            parent = ".".join(parts[i:-1])
+            pats.append(rf"^\s*from\s+\.*{re.escape(parent)}\s+import\s+.*\b{re.escape(leaf)}\b")
+    return pats
+
+
 def used(module: str) -> tuple[bool, str]:
-    """某个 xm 模块是否被生产代码 import —— 只看被引用，不看它自己写了什么。"""
-    rx = re.compile(rf"^\s*(from xm\.{module}\b|import xm\.{module}\b)", re.M)
+    """某个生产模块是否被别处 import —— 只看被引用，不看它自己写了什么。
+
+    sa2 内部用相对 import（`from ..core.ledger import Ledger`），所以三种写法都要认，
+    否则「有消费者」会假红。
+    """
+    rx = re.compile("|".join(f"(?:{p})" for p in _import_patterns(module)), re.M)
+    own = ROOT / (module.replace(".", "/") + ".py")
     for p in _py_files():
-        if p.name == f"{module}.py":
+        if p == own:
             continue
         for lineno, text in code_lines(p):
             if rx.search(text):
                 return True, f"{p.relative_to(ROOT)}:{lineno}"
-    return False, f"xm/{module} 在 xm/ 与 scripts/ 无 import 方（只在 tests/ 出现）"
+    return False, f"{module} 在 {'、'.join(PROD_DIRS)}/ 无 import 方"
 
 
-def backlog_section() -> tuple[bool, str]:
-    """直接读模块常量，而不是匹配源码里那个被引号包着的值。"""
-    sys.path.insert(0, str(ROOT))
-    from xm import backlog
-    return ("## 7" in backlog.SECTION), f"xm/backlog.py SECTION={backlog.SECTION!r}"
+def and_all(*pairs: tuple[bool, str]) -> tuple[bool, str]:
+    """多个承载体必须同时成立；不成立时把各自卡在哪一并报出来。"""
+    ok = all(p[0] for p in pairs)
+    joined = (" + " if ok else "未同时成立：").join(
+        [p[1] for p in pairs] if ok else [f"{p[1]}" for p in pairs if not p[0]])
+    return ok, joined
 
 
 def org_runtime_gate() -> tuple[bool, str]:
     """组织路径的预算闸：既要跟预算比，又要真在派活路径上被问到。
 
     只查「有比较」会漏掉「算了但没人看」；只查「有人问」会漏掉「问的东西没比预算」。
-    行为面由 tests/test_org_budget.py 证明，这里只判承载体在不在。
+    行为面由 tests/test_sa2_loop.py 的 budget_stop 用例证明，这里只判承载体在不在。
     """
-    compared = in_file("xm/sa_task.py", r"tokens > self\.budget_tokens")
-    asked = in_file("xm/sa_task.py", r"exhausted\(\)")
-    ok = compared[0] and asked[0]
-    return ok, (f"{compared[1]} + {asked[1]}" if ok
-                else f"未构成闸：比较 {compared[1]}；调用点 {asked[1]}")
+    return and_all(in_file("sa2/core/budget.py", r"self\.spent > self\.tokens"),
+                   in_file("sa2/loop/pdca.py", r"budget\.exhausted\(\)"))
 
 
 # ── 每条 DNA 的分支谓词 ────────────────────────────────────────────────────
@@ -143,34 +161,35 @@ def org_runtime_gate() -> tuple[bool, str]:
 
 SPEC: dict[int, list[tuple[str, object]]] = {
     1: [
-        ("任务来源可从进度表读出", backlog_section),
+        ("任务来源可从待办队列读出", lambda: in_file("sa2/autonomy/backlog.py", r"def pick\(")),
         ("目标树自动生成/拆解", lambda: find(r"def (decompose|goal_tree|split_goal)")),
         ("目标偏离度计算", lambda: find(r"def (\w*deviation\w*|偏离)")),
     ],
     2: [
-        ("健康指标被生产路径采集", lambda: used("metrics")),
+        ("健康指标被生产路径采集", lambda: used("sa2.core.metrics")),
     ],
     3: [
-        ("动态创建角色", lambda: in_file("xm/hiring.py", r"def plan_org")),
+        ("动态创建角色", lambda: in_file("sa2/forge/org.py", r"def plan_org")),
         ("动态销毁/替换角色", lambda: find(r"def (\w*(retire|destroy|replace_role)\w*)")),
         ("编制可复用（不每次重建）", lambda: find(r"def (\w*reuse\w*|previous_plan|last_plan)")),
     ],
     4: [
-        ("账本写入入口", lambda: in_file("xm/ledger.py", r"def append\(")),
-        ("账本被生产路径使用", lambda: used("ledger")),
+        ("账本写入入口", lambda: in_file("sa2/core/ledger.py", r"def append\(")),
+        ("账本被生产路径使用", lambda: used("sa2.core.ledger")),
     ],
     5: [
         ("版本化/灰度/回滚机制", lambda: find(r"def (\w*(rollback|canary|gray)\w*)")),
     ],
     6: [
-        ("存在编制自我调整入口", lambda: find(r"(org_adjustment|max_roles)")),
+        ("编制随声明自动伸缩（不是人工固定人数）",
+         lambda: in_file("sa2/loop/size.py", r"def decide\(")),
         ("调整由健康指标驱动（非人工参数）",
-         lambda: (used("metrics")[0] and not find(r"max_roles", ("xm",))[0],
-                  "metrics 无生产消费者" if not used("metrics")[0]
-                  else "调整条件仍读人工传入的 max_roles")),
+         lambda: and_all(used("sa2.core.metrics"),
+                         (not find(r"max_roles", ("sa2",))[0],
+                          "编制仍由人工参数 max_roles 决定，不是健康指标驱动的"))),
     ],
     7: [
-        ("健康指标阈值判断", lambda: used("metrics")),
+        ("健康指标阈值判断", lambda: used("sa2.core.metrics")),
         ("推倒重构决策入口", lambda: find(r"def (\w*(refactor_decision|rebuild)\w*)")),
     ],
     8: [
@@ -179,9 +198,11 @@ SPEC: dict[int, list[tuple[str, object]]] = {
         ("收益账本（验证方收益=抓到的真错）", lambda: find(r"def (\w*(reward|收益)\w*)")),
     ],
     9: [
-        ("五条机检在 delivery.check", lambda: in_file("xm/delivery.py", r"def check\(")),
-        ("交付路径实际调用", lambda: in_file("xm/deliver.py", r"delivery\.check")),
+        ("五条机检在 delivery.check", lambda: in_file("sa2/delivery.py", r"def check\(")),
         ("仓库文本用同一判据", lambda: in_file("scripts/claim_check.py", r"bare_optimal_lines")),
+        ("产物证据由准出闸判可定位",
+         lambda: and_all(in_file("sa2/core/gate.py", r"def check_evidence"),
+                         used("sa2.core.gate"))),
     ],
 }
 

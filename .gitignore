@@ -8,8 +8,5 @@ __pycache__/
 # macOS
 .DS_Store
 
-# 系统自举工作区（系统在这里改代码，产出 diff 交人审；副本不入库）
-sandbox/
-
 # 执行产物（按日期+任务分目录，不入库；要留证据的放 reports/）
 runs/

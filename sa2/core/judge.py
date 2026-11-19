@@ -1,6 +1,6 @@
 """判定权：跑判据、管登记。**生成方永远不在 authority 里。**
 
-sa 1.0 把「造判据」和「判判据」放在同一个模块（`xm/criteria_runtime.py`）里，
+sa 1.0 把「造判据」和「判判据」放在同一个模块里（`xm/criteria_runtime.py`，已随 1.0 退役），
 两件事共用一个对象，等于把锁和钥匙拴在一起。2.0 把它拆开：
 - 造判据 → `sa2/forge/criteria.py`（只能 propose，产出 Criterion）
 - 判定权 → 这里（register 要 authority 里的身份，run 记录谁被执行过）

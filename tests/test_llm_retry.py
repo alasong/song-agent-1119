@@ -10,7 +10,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from xm import llm
+from sa2 import llm
 
 
 class FakeResponse(io.BytesIO):

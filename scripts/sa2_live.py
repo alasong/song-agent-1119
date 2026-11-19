@@ -36,7 +36,7 @@ from sa2.loop import size                         # noqa: E402
 from sa2.loop.pdca import PDCA                    # noqa: E402
 from sa2.memory import registry                   # noqa: E402
 from sa2.memory.cases import CaseBook             # noqa: E402
-from xm.llm import complete_usage                 # noqa: E402
+from sa2.llm import complete_usage                # noqa: E402
 
 GOAL = "写一份「Agent 递归自我改进的最小可行实验」方案"
 

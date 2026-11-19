@@ -1,4 +1,4 @@
-"""交付自证检查：五条规则各一个用例，外加「现有产物必须红」这条试金石。"""
+"""交付自证检查：五条规则各一个用例。判的是「有没有自证」，不判「自证得对不对」。"""
 from __future__ import annotations
 
 import sys
@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from xm import delivery
+from sa2 import delivery
 
 GOOD = """## 结论
 把交付标准搬进 sa：1 个模块、5 条规则，全部可判红。
@@ -69,21 +69,6 @@ class DeliveryCheckTest(unittest.TestCase):
     def test_quoted_discussion_is_allowed(self):
         text = GOOD.replace("全部可判红。", "全部可判红；「最优」这个词按 OPTIMALITY 的 L1/L2 改用。")
         self.assertTrue(delivery.check(text)["ok"])
-
-
-class RealArtifactTest(unittest.TestCase):
-    """交付物必须自证：现在由系统追加，所以最新一份应当合格。
-
-    这条如果红，说明交付路径没接上（或又被模型写坏了），是真 bug。
-    """
-
-    def test_newest_delivered_artifact_is_compliant(self):
-        candidates = sorted(Path.home().glob("xm-runs/*/sa-run-*/deliverable.md"))
-        if not candidates:
-            self.skipTest("没有历史交付物可测")
-        result = delivery.check(candidates[-1].read_text(encoding="utf-8"))
-        self.assertTrue(result["ok"],
-                        f"最新交付物不自证：{result['missing']}（{candidates[-1]}）")
 
 
 if __name__ == "__main__":

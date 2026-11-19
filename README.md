@@ -4,11 +4,13 @@
 `sa` 不是包名，也不用来改目录或 import 路径——它是这个组织的名字，不是代码里的一层。
 
 一套"能自己长出组织、能自我检测腐烂、能自我重构"的活性组织实验工程。
-设计文档在 `docs/`，执行顺序以 `docs/ROADMAP.md` 为准。
+标尺是 [`docs/AI自治科研组织_准超级智能系统_完整设计文档.md`](docs/AI自治科研组织_准超级智能系统_完整设计文档.md)；
+现有实现、边界与真跑读数见 [`docs/SA2.md`](docs/SA2.md)。
 
-**一句话现状**：能力验收 5/6（`python3 scripts/bench.py`）。交付入口默认**单 agent**，判据不过才组队；判据能机检也能盲评打分；知识能从公开源取、进提示词、过判据才回写。差的那一条是 G1——真实 24 小时常驻还没跑满。还不会自己找目标，也还没有跨阶段自举。
-
-**sa 2.0 骨架**（`sa2/`）：照「重来骨架」重写的一份并存实现——薄的不变判定层 + 可自生成层 + PDCA 环 + 案例库，红线是「生成方永不对判据拥有判定权」。`python3 scripts/sa2_demo.py` 跑全环（假模型），`python3 scripts/sa2_live.py` 用真模型跑一轮；设计与边界见 [`docs/SA2.md`](docs/SA2.md)。
+**一句话现状**：仓库里只有 `sa2/`——薄的不变判定层 + 三圈可自生成的载体（目标 / 编制与流程 / 判据与工具），
+红线是「生成方永不对判据拥有判定权」。全环可跑：`python3 scripts/sa2_demo.py`（假模型，退出 0）、
+`python3 scripts/sa2_live.py`（真模型跑一轮）。sa 1.0（`xm/`）已于 2026-11-20 退役，
+删了什么、丢了什么读数在 `docs/SA2.md` §9.8。
 
 ---
 
@@ -16,64 +18,63 @@
 
 | 目录 | 谁写 | 放什么 | 禁令 |
 |---|---|---|---|
-| `docs/` | **只能人审后改** | 设计文档、论证、ROADMAP、ARCHITECTURE | 系统不得写入 |
-| `xm/` | **只能人审后改** | 运行时：账本、判据、准出、总线、调度、daemon、模型通道 | 系统不得写入 |
+| `docs/` | **只能人审后改** | 设计文档、论证、更优的定义、2.0 实现说明 | 系统不得写入 |
+| `sa2/` | **只能人审后改** | 运行时：`core/`（判定层）· `forge/`（自生成）· `loop/`（PDCA）· `memory/` · `autonomy/` | 系统不得写入 |
 | `tests/` | **只能人审后改** | 机检判据，一切「完成」的唯一标准 | 系统不得写入，也不得改断言 |
-| `scripts/` | **只能人审后改** | 入口脚本（跑实验、自举） | 系统不得写入 |
-| `~/xm-runs/` | 系统写 | **项目之外**：任务包、产物、任务判据（check.py）、账本 | 不入库；可用 `XM_RUNS` 改位置 |
-| `sandbox/` | 系统写 | 自举用的隔离副本，改完出 diff 交人审 | 不得直接改项目目录 |
-| `reports/` | 审计方写 | 实验读数与账本（证据） | 只增不改 |
+| `scripts/` | **只能人审后改** | 入口脚本：demo / live / 文本判红 / DNA 审计 | 系统不得写入 |
+| `~/xm-runs/` | 系统写 | **项目之外**：任务包、产物、判据库、账本 | 不入库；可用 `XM_RUNS` 改位置 |
+| `reports/` | 审计方写 | 实验读数与账本（证据，含 1.0 时期的） | 只增不改 |
 
-**这条边界是硬的**：`DaemonConfig` 会拒绝任何写到 `artifacts_root`（默认 `~/xm-runs`，即项目外）以外的任务；项目目录（`docs/`、`xm/`、`tests/`、`scripts/`）只能由人审过的变更修改。一见即测的守卫在 `tests/test_isolation.py`。
-
-**任务判据跟着任务走**：一次性任务的 `check.py` 放在 `~/xm-runs/<任务>/` 里，不进项目 `tests/`——`tests/` 只放长期有效的项目判据（如 M1 的里程碑判据）。
+**任务判据跟着任务走**：一次性任务的判据由 `sa2/forge/criteria.py` 在跑的时候造出来，随运行落到
+`~/xm-runs/`；`tests/` 只放长期有效的项目判据。
 
 ---
 
 ## 怎么跑
 
 ```bash
-# 全部测试（188 条，必须全绿）
+# 全部测试
 python3 -m unittest discover -s tests -t . -q
 
-# 能力验收：六条判据，退出码 0 = 够了
-python3 scripts/bench.py
+# 全环（假模型，确定性；退出 0 只说明环是活的，不说明它会自生成）
+python3 scripts/sa2_demo.py
 
-# 交付：先一个人干，判不过才组队（决策与读数落 reports/deliver-*.json）
-DEEPSEEK_API_KEY=... python3 scripts/deliver.py --task ~/xm-runs/<任务> --goal "<目标>"
+# 真模型跑一轮（产物与 readings.json 落在 ~/xm-runs/sa2-final/<时间戳>/）
+DEEPSEEK_API_KEY=... python3 scripts/sa2_live.py --goal "<目标>" --budget 60000
 
-# 同任务 A/B 对照；--judge-existing 只给已有产物做盲评（1 次调用）
-python3 scripts/ab_test.py --judge --task ~/xm-runs/<任务>
-python3 scripts/ab_test.py --judge-existing reports/ab-<ts>.json
+# 仓库文本判红：裸称「最优」、报告判定与读数不符
+python3 scripts/claim_check.py
 
-# 常驻：跑满 24h 才会写 reports/liveness-*.json
-python3 scripts/resident_run.py --hours 24 --interval 600
-
-# 从 ROADMAP 取下一个任务，生成任务包（没有机检判据就拒绝执行）
-python3 scripts/bootstrap_run.py
+# DNA 落地审计：读设计文档 §二，逐条给承载体
+python3 scripts/dna_audit.py
 ```
 
-模型通道：`xm/llm.py` 只做一次 chat completion，密钥不落盘——先读 `DEEPSEEK_API_KEY`，实验环境回退到正在运行的 DSH 进程环境；网络错误有界重试，4xx 不重试。
+模型通道：`sa2/llm.py` 只做一次 chat completion，密钥不落盘——先读 `DEEPSEEK_API_KEY`，
+实验环境回退到正在运行的 DSH 进程环境；网络错误有界重试，4xx 不重试。它不是四层之一：
+`forge/scribe.py` 只收一个 `llm` 可调用，注入是为了让四层的测试不碰网络。
 
 ---
 
 ## 验收口径（认读数不认感觉）
 
-六条能力判据在 [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)，由 `scripts/bench.py` 机检，**当前 5/6**：
-G2 组织性 / G3 判据 / G4 知识 / G5 不漂移 / G6 成本 绿；G1（真实 24h 常驻）还在跑墙钟。
+2.0 **没有**「六门验收」这种全局评分器——它随 1.0 一起退役了（当时的读数 5/6，报告留在 `reports/`）。
+现在能判红的只有四道过程门，每一轮都跑：
+
+1. **声明先于执行**：没声明目标 / 维度 / 判据 / 预算，前置门直接拒，零调用。
+2. **判据可执行**：判据必须过三反例自测（合格件 / 缺件 / 冒充件 / 空壳件）才准进核。
+3. **证据可定位**：交付的证据要指到文件或命令，不能只说「做好了」。
+4. **不静默失败**：被拒的每一格都要有原因，且只重做那一格。
+
+每轮的真读数（tokens / 派活次数 / 拒绝次数 / 产物路径）写在 `readings.json`，不是事后回忆。
 
 「更优」怎么判见 [`docs/OPTIMALITY.md`](docs/OPTIMALITY.md)：开放任务上只能声称 **L1 占优**或
-**L2 未发现更优**，不能声称「最优」。L1 的实现是 `xm/quality.py` 的 5 维盲评 + `scripts/ab_test.py` 的 Pareto 裁定。
-
-设计细节见 `docs/`，架构与决策理由见 `docs/ARCHITECTURE.md`。
+**L2 未发现更优**，不能声称「最优」。
 
 ---
 
 ## 演进规矩
 
 1. **没有机检判据的任务不接**——判据先写，再动手。
-2. **结构性变更走人审**：系统只能改 `sandbox/`，改完出 diff，人看 diff 决定合入。
-3. **失败要大声**：跳过、降级、没覆盖都写进 `reports/` 与 `unmeasured` 字段，不静默通过。
----
-
-能力验收（什么算够了）：见 `docs/ACCEPTANCE.md`，跑 `python3 scripts/bench.py`。
+2. **结构性变更走人审**：项目目录只能由人审过的变更修改。
+3. **失败要大声**：跳过、降级、没覆盖都写进 `readings.json` 的未测字段，不静默通过。
+4. **退役也留痕**：删掉的能力要在 `docs/SA2.md` 写清「删了什么、丢了哪个读数」，不许悄悄消失。

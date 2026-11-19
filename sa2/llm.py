@@ -1,4 +1,4 @@
-"""最小 LLM 通道：只做 chat completion。
+"""sa2 的模型通道：只做 chat completion。原 `xm/llm.py` 随 1.0 退役后迁到这里。
 
 密钥来源（按顺序，不落盘、不打印）：
 1. 环境变量 DEEPSEEK_API_KEY
@@ -8,6 +8,9 @@
 - 网络层错误与 5xx 重试（上限 MAX_ATTEMPTS 次，退避递增）——实测一次 IncompleteRead
   就能让整轮派活白跑；
 - 4xx 不重试：401 重试只是把错误拖慢，不会变好。
+
+在架构里的位置：不属于四层。四层里 `forge/scribe.py` 只**收**一个 `llm` 可调用，
+真网络在这里；注入是为了让四层的测试不碰网络。
 """
 from __future__ import annotations
 
