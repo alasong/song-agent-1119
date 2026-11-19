@@ -49,7 +49,11 @@
 
 ---
 
-## 4. 现在到哪了
+## 4. 「更优」怎么判
+
+「最优」不可证（见 [`OPTIMALITY.md`](OPTIMALITY.md)）。对外只能声称 **L1 占优**或 **L2 未发现更优**，并且必须附候选集、预算、判据版本、差值四项。
+
+## 5. 现在到哪了
 
 跑 `python3 scripts/bench.py` 看实时读数；历史在 `reports/bench-*.json`。
 
