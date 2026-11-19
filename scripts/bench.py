@@ -52,13 +52,15 @@ def g3_criteria() -> dict:
     if not _has("xm/criteria_runtime.py"):
         return {"passed": False, "evidence": "判据运行时不存在",
                 "next": "写 criteria_runtime：文字判据→可执行检查，登记版本，生成方不可改"}
-    proc = subprocess.run([sys.executable, "-m", "unittest", "tests.test_criteria_runtime", "-q"],
-                          cwd=ROOT, capture_output=True, text=True)
-    ok = proc.returncode == 0
+    units = subprocess.run([sys.executable, "-m", "unittest",
+                            "tests.test_criteria_runtime", "tests.test_daemon_criteria", "-q"],
+                           cwd=ROOT, capture_output=True, text=True)
+    ok = units.returncode == 0
     return {
         "passed": ok,
-        "evidence": "判据运行时存在；越权/执行/版本测试 " + ("通过" if ok else "未通过"),
-        "next": "判据必须能被生成方之外的人注册，且生成方改不动",
+        "evidence": "判据运行时 + daemon 通电（未注册判据即判红）；"
+                    + ("测试通过" if ok else "测试未通过"),
+        "next": "判据必须能被生成方之外的人注册，生成方改不动，且执行链路真的用它",
     }
 
 

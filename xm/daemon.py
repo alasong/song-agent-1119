@@ -27,6 +27,8 @@ class DaemonConfig:
     artifacts_root: str = "runs"
     verify_cmd: list[str] | None = None
     budget_tokens: int | None = None
+    criteria: list[str] = field(default_factory=list)
+    criteria_path: str | None = None
 
     def __post_init__(self) -> None:
         # 产物边界：任务产出只能落在 artifacts_root（默认在项目之外）下，
@@ -93,6 +95,23 @@ class Daemon:
         return max(blocks, key=len)
 
     def _run_tests(self) -> tuple[int, str]:
+        # 判据运行时：验收用「注册过的可执行判据」，生成方只能读、不能注册
+        if self.cfg.criteria:
+            from xm.criteria_runtime import CriteriaRuntime
+
+            target = self.ws / self.cfg.target_file
+            text = target.read_text(encoding="utf-8") if target.exists() else ""
+            runtime = CriteriaRuntime(self.cfg.criteria_path, writer="generator")
+            lines, failed = [], 0
+            for name in self.cfg.criteria:
+                try:
+                    result = runtime.check(name, {"text": text, "cwd": str(self.ws)})
+                except Exception as exc:  # 判据缺失/损坏 → 判红，不许默认通过
+                    result = {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
+                lines.append(f"{'PASS' if result['ok'] else 'FAIL'} {name}: {result['detail'][:200]}")
+                failed += 0 if result["ok"] else 1
+            return (0 if failed == 0 else 1), "\n".join(lines)
+
         # 任务判据跟着任务走：给了 verify_cmd 就跑它（一次性任务的 check 脚本在 run 目录里）
         cmd = self.cfg.verify_cmd or [sys.executable, "-m", "unittest", *self.cfg.tests, "-q"]
         proc = subprocess.run(cmd, cwd=self.ws, capture_output=True, text=True)
