@@ -1,0 +1,24 @@
+{
+  "ts": "2026-11-19T18:44:43",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 2,
+  "dispatches": 12,
+  "handoffs": 11,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "verdicts": 2,
+  "verdict_pass": 0,
+  "verdict_reject": 2,
+  "sample_artifact": "{\"verdict\":\"reject\",\"reason\":\"交付仅为技术裁决单，未提供可运行代码、命令、日志与通过率，无法在干净环境验证端到端闭环及回归用例。\"}",
+  "distinct_role_names": [
+    "代码与资产整理员",
+    "回归用例设计者",
+    "接口契约研究员",
+    "独立验证员",
+    "装配实现工程师",
+    "装配领域专家"
+  ]
+}

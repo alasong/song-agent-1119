@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -41,4 +43,42 @@ class RoleWorker:
             "content": content,
         }
         self.log.append(artifact)
+        return artifact
+
+@dataclass
+class VerifierWorker(RoleWorker):
+    """验证角色：必须给出机器可读裁决。解析不出来一律按拒绝处理（fail-closed）。"""
+
+    def __call__(self, role: dict, stage: str, upstream: dict | None) -> dict:
+        subject = (upstream or {}).get("content", "")[:1500]
+        prompt = f"""你是独立验证员，不参与生产，只判断上游交付是否达标。
+
+验收标准：{role['criteria']}
+
+待验证的上游交付：
+```
+{subject or '（无上游产物）'}
+```
+
+只返回一个 JSON，不要写任何解释：
+{{"verdict":"pass" 或 "reject","reason":"不超过 50 字的理由"}}"""
+        text = self.llm([{"role": "user", "content": prompt}]).strip()
+        artifact = {
+            "id": f"{stage}:{role['name']}",
+            "upstream": (upstream or {}).get("id"),
+            "stage": stage,
+            "role": role["name"],
+            "content": text,
+        }
+        self.log.append(artifact)
+        match = re.search(r"\{.*\}", text, re.S)
+        verdict, reason = "reject", "裁决不可解析"
+        if match:
+            try:
+                data = json.loads(match.group(0))
+                verdict = "pass" if data.get("verdict") == "pass" else "reject"
+                reason = str(data.get("reason", ""))[:200]
+            except json.JSONDecodeError:
+                pass
+        artifact.update({"verdict": verdict, "reason": reason})
         return artifact

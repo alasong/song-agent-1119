@@ -1,7 +1,7 @@
 """真模型角色 worker 的验收（用假 llm，不联网）。"""
 import unittest
 
-from xm.worker import RoleWorker
+from xm.worker import RoleWorker, VerifierWorker
 
 ROLE = {"name": "实现者", "kind": "executor", "duty": "只负责写实现", "criteria": "测试绿"}
 ROLE2 = {"name": "复核者", "kind": "verifier", "duty": "只负责复核", "criteria": "能判红"}
@@ -41,3 +41,26 @@ class RoleWorkerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class VerifierWorkerTest(unittest.TestCase):
+    ROLE = {"name": "验证员", "kind": "verifier", "duty": "只负责判红", "criteria": "裁决可机检"}
+
+    def test_parses_pass_verdict(self):
+        w = VerifierWorker(lambda m: '结论：{"verdict":"pass","reason":"用例全绿"}')
+        art = w(self.ROLE, "验证", None)
+        self.assertEqual(art["verdict"], "pass")
+        self.assertIn("用例全绿", art["reason"])
+
+    def test_parses_reject_verdict(self):
+        w = VerifierWorker(lambda m: '{"verdict":"reject","reason":"缺验收证据"}')
+        self.assertEqual(w(self.ROLE, "验证", None)["verdict"], "reject")
+
+    def test_unparsable_fails_closed(self):
+        w = VerifierWorker(lambda m: "我觉得还行")
+        art = w(self.ROLE, "验证", None)
+        self.assertEqual(art["verdict"], "reject")
+        self.assertEqual(art["reason"], "裁决不可解析")
+
+    def test_unknown_verdict_value_treated_as_reject(self):
+        w = VerifierWorker(lambda m: '{"verdict":"maybe"}')
+        self.assertEqual(w(self.ROLE, "验证", None)["verdict"], "reject")

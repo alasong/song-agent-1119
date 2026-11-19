@@ -47,13 +47,27 @@ def main() -> int:
         from xm.llm import complete
         llm = lambda messages: complete(messages, model="deepseek-flash", max_tokens=700,
                                         extra={"thinking": {"type": "disabled"}})
-        worker = RoleWorker(llm)
+        from xm.worker import VerifierWorker
+        base_worker = RoleWorker(llm)
+        verifier_worker = VerifierWorker(llm)
+        all_artifacts = []
+
+        def worker(role, stage, upstream):
+            w = verifier_worker if role.get("kind") == "verifier" else base_worker
+            artifact = w(role, stage, upstream)
+            all_artifacts.append(artifact)
+            return artifact
         worker_mode = "llm"
 
     stats = scheduler.run(plan, worker=worker)
     stats["worker_mode"] = worker_mode
     if worker is not None:
-        stats["sample_artifact"] = worker.log[-1]["content"][:120] if worker.log else ""
+        artifacts = all_artifacts
+        verdicts = [a for a in artifacts if "verdict" in a]
+        stats["verdicts"] = len(verdicts)
+        stats["verdict_pass"] = sum(1 for a in verdicts if a["verdict"] == "pass")
+        stats["verdict_reject"] = sum(1 for a in verdicts if a["verdict"] == "reject")
+        stats["sample_artifact"] = artifacts[-1]["content"][:120] if artifacts else ""
 
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
