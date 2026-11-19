@@ -96,6 +96,14 @@ class Judge:
         if self.require_self_tested and not crit.self_tested:
             raise CriteriaError(f"判据 {crit.name!r} 没跑过三反例自测，不许登记")
         old = self._items.get(crit.name)
+        if old is not None and old.kind == crit.kind and old.spec == crit.spec \
+                and old.scope == crit.scope:
+            # 幂等：同一份判据再登记一次不该升版本，也不该新增历史。
+            # 跨运行复用能不能省事，就看这一条有没有生效。
+            if self.ledger:
+                self.ledger.append("criteria_reused", proposer,
+                                   {"name": crit.name, "version": old.version})
+            return old
         if old is not None:
             # 同名重登不是「更新一下」：验收标准被悄悄换掉，历史交付却还标着通过。
             # 唯一安全的做法是升版本并留痕，让「这份交付是按哪版判据过的」可回溯。

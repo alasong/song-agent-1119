@@ -81,6 +81,9 @@ def main() -> int:
     ap.add_argument("--auto-tools", action="store_true")
     ap.add_argument("--fresh", action="store_true", help="不用跨运行判据库")
     ap.add_argument("--resume", default=None, help="从 state.json 续跑")
+    ap.add_argument("--parallel", action="store_true", help="同一阶段的角色并发派活")
+    ap.add_argument("--reuse", action="store_true",
+                    help="同目标已有判据就复用，不再让模型重新造")
     args = ap.parse_args()
 
     goal = args.goal
@@ -137,6 +140,19 @@ def main() -> int:
             plan = size.single_plan(provisional)
             decision = size.SizeDecision("single", "自动阶段判据需要编制：回退单人", args.budget)
 
+    # ③a 复用：同目标已登记过判据就直接用，省掉一次模型调用
+    reused = False
+    if args.reuse and not args.fresh and not args.auto_stages:
+        index = registry.load_goal_index()
+        names = index.get(registry.fingerprint(goal)) or []
+        existing = [judge.get(n) for n in names]
+        if names and all(existing):
+            delivery_specs = [c for c in existing if c and c.scope == "delivery"]
+            if delivery_specs:
+                reused = True
+                notes["reused_from_registry"] = f"{len(delivery_specs)} 条判据（版本 " \
+                    + "、".join(str(c.version) for c in delivery_specs) + "）"
+
     # ③ 造阶段判据；交付判据 = 最后一个「写正文」阶段的判据的 delivery 副本（同源）
     stage_specs: dict[str, list] = {}
     gates: dict[str, tuple[str, ...]] = {}
@@ -144,16 +160,25 @@ def main() -> int:
         for stage in plan.stages:
             made = fc.propose_spec(goal, llm,
                                    context=f"当前阶段：{stage.name}\n本阶段要交的东西：{stage.output}")
-            try:
-                specs = fc.tested_set(fc.instantiate_all(made["spec"], dims,
-                                                         prefix=f"{stage.name}·", scope="stage"),
-                                      sample=made["sample"] or None)
-            except ValueError as exc:
-                notes[f"stage_spec_fallback:{stage.name}"] = str(exc)
-                specs = []
+            (run_dir / f"stage-spec-{stage.name}.md").write_text(made["raw"], encoding="utf-8")
+            sample = (made.get("sample") or "").strip()
+            heads = ft.headings_of(sample)
+            specs = []
+            if heads:
+                # 判据从**样例**派生：标题 + 每节正文下限。不再用「必须出现某词」——
+                # 实测模型会换成同义表述，字面关键词必然判红。
+                specs.append(fc.tested(fc.replace(
+                    fc.propose_sections(f"{stage.name}·章节", heads, dims), scope="stage")))
+                try:
+                    _, tool = ft.checker_from_sections(
+                        sample, run_dir / "tools", name=f"stage-{stage.name}-sections")
+                    specs.append(fc.replace(tool, name=f"{stage.name}·正文下限", scope="stage"))
+                except ValueError as exc:
+                    notes[f"checker_fallback:{stage.name}"] = str(exc)
+            else:
+                notes[f"stage_sample_missing:{stage.name}"] = "样例里没有 ## 标题，判据无法派生"
             stage_specs[stage.name] = specs
             gates[stage.name] = tuple(_register(judge, specs)) if specs else ()
-            (run_dir / f"stage-spec-{stage.name}.md").write_text(made["raw"], encoding="utf-8")
 
         empty = [st.name for st in plan.stages if not stage_specs.get(st.name)]
         if empty:
@@ -172,7 +197,7 @@ def main() -> int:
                           for c in stage_specs.get(writer.name, [])]
         if not delivery_specs:
             notes["delivery_source"] = f"写正文阶段「{writer.name}」没有判据，退回人工规格"
-    else:
+    elif not reused:
         delivery_specs = []
         if args.auto_criteria:
             made = fc.propose_spec(goal, llm, context=("可参考的任务约束：\n" + hand_spec
@@ -197,6 +222,8 @@ def main() -> int:
             delivery_specs = fc.tested_set(cands) if len(cands) > 1 else [fc.tested(cands[0])]
 
     _register(judge, delivery_specs)
+    if not args.fresh and not args.auto_stages and delivery_specs:
+        registry.remember_goal(goal, [c.name for c in delivery_specs])
     decl = Declaration(goal=goal, dims=dims,
                        criteria=tuple(c.name for c in delivery_specs),
                        budget_tokens=args.budget)
@@ -245,7 +272,7 @@ def main() -> int:
     state_path = Path(args.resume) if args.resume else run_dir / "state.json"
     scribe = Scribe(llm, spec=spec, max_tokens=args.max_tokens)
     pdca = PDCA(judge, ledger, plan, scribe, fd.VOCAB, usage=usage,
-                max_stage_attempts=2, cases=cases,
+                max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),
                 artifact_dir=run_dir / "stages")
     report = pdca.run(decl, evidence=[])
@@ -273,6 +300,7 @@ def main() -> int:
         "exact_usage": bool((report["budget"] or {}).get("exact")),
         "criteria": judge.names(),
         "delivery_criteria": [c.name for c in delivery_specs],
+        "reused": reused,
         "subtasks": [s.name for s in subtasks] if subtasks else [],
         "org_generated": bool(args.auto_org and not org_error),
         "org_error": org_error,

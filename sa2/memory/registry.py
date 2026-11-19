@@ -33,3 +33,29 @@ def criteria_history_path() -> Path:
 
 def cases_path() -> Path:
     return ensure() / "cases.jsonl"
+
+def goals_path() -> Path:
+    return ensure() / "goals.json"
+
+
+def fingerprint(goal: str) -> str:
+    import hashlib
+    return hashlib.sha1((goal or "").strip().encode("utf-8")).hexdigest()[:12]
+
+
+def load_goal_index() -> dict:
+    path = goals_path()
+    if not path.exists():
+        return {}
+    try:
+        import json
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def remember_goal(goal: str, names) -> None:
+    import json
+    index = load_goal_index()
+    index[fingerprint(goal)] = list(names)
+    goals_path().write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")

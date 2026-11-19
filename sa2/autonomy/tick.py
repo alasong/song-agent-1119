@@ -51,3 +51,21 @@ def tick(backlog: Backlog, ledger: Ledger, judge: Judge, produce, vocab,
     ledger.append("tick", "autonomy", {"goal": goal.text, "scale": decision.scale,
                                        "passed": report["passed"]})
     return TickResult(True, decision.reason, goal=goal, scale=decision.scale, report=report)
+
+def tick_loop(backlog: Backlog, ledger: Ledger, judge: Judge, produce, vocab,
+              max_ticks: int = 10, interval: float = 0.0, sleep=None, **kw) -> list[TickResult]:
+    """常驻调度：连着跑多个目标，队列空了就停。
+
+    sleep 可注入，别让测试为了「常驻」真等——这是把「调度」和「时钟」分开的唯一点。
+    """
+    import time as _time
+    sleep = sleep or _time.sleep
+    results: list[TickResult] = []
+    for index in range(max(1, max_ticks)):
+        result = tick(backlog, ledger, judge, produce, vocab, **kw)
+        results.append(result)
+        if not result.ran:
+            break
+        if interval and index < max_ticks - 1:
+            sleep(interval)
+    return results

@@ -65,6 +65,21 @@ class VersionTest(unittest.TestCase):
             again = Judge(authority=("leader",), path=path)
             self.assertEqual(again.get("章节").version, 2)
 
+    def test_identical_rereregistration_is_idempotent(self):
+        """跨运行复用：同样的判据再来一次，不升版本、不新增历史——这一步才是「省事」。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = Ledger(root / "l.jsonl")
+            judge = Judge(authority=("leader",), path=root / "c.json",
+                          history=root / "h.jsonl", ledger=ledger)
+            crit = fc.tested(fc.propose_sections("章节", [S1, S2], ("correctness",)))
+            judge.register(crit, proposer="leader")
+            judge.register(crit, proposer="leader")
+            self.assertEqual(judge.get("章节").version, 1)
+            self.assertEqual(len((root / "h.jsonl").read_text().splitlines()), 1)
+            self.assertEqual(ledger.count("criteria_approved"), 1)
+            self.assertEqual(ledger.count("criteria_reused"), 1)
+
 
 class ConfigTest(unittest.TestCase):
     def test_env_overrides_thresholds(self):
@@ -175,6 +190,73 @@ class ArtifactPersistTest(unittest.TestCase):
             files = sorted((root / "stages").glob("*.md"))
             self.assertEqual(len(files), 2, files)
             self.assertIn(S1, files[0].read_text(encoding="utf-8"))
+
+
+class ParallelTest(unittest.TestCase):
+    def test_roles_in_the_same_stage_run_concurrently(self):
+        """同阶段角色互不依赖：并发粒度只能到这里，跨阶段并发会破坏交接。"""
+        import threading
+        import time as _time
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            judge = Judge(authority=("leader",))
+            judge.register(fc.tested(fc.propose_sections("一段", [S1], ("correctness",))),
+                           proposer="leader")
+            plan = fo.parse_plan("目标", json.dumps({
+                "roles": [
+                    {"name": "规划", "kind": "planner", "duty": "拆", "criteria": "清", "budget": 5},
+                    {"name": "执行", "kind": "executor", "duty": "写", "criteria": "齐", "budget": 5},
+                    {"name": "验证", "kind": "verifier", "duty": "判", "criteria": "准", "budget": 5},
+                ],
+                "stages": [
+                    {"name": "起草", "output": "草稿", "roles": ["规划", "执行"],
+                     "gate_criteria": ["一段"]},
+                    {"name": "成稿", "output": "成稿", "roles": ["执行", "验证"],
+                     "gate_criteria": ["一段"]},
+                ],
+            }, ensure_ascii=False))
+            running = {"now": 0, "peak": 0}
+            lock = threading.Lock()
+
+            def produce(role, stage, upstream, attempt, feedback="", requirements=""):
+                with lock:
+                    running["now"] += 1
+                    running["peak"] = max(running["peak"], running["now"])
+                _time.sleep(0.05)
+                with lock:
+                    running["now"] -= 1
+                return f"{S1}\n{role.name} 产出\n"
+
+            pdca = PDCA(judge, Ledger(root / "l.jsonl"), plan, produce,
+                        {"correctness": "正确性"}, parallel=True)
+            report = pdca.run(Declaration(goal="t", dims=("correctness",),
+                                          criteria=("一段",), budget_tokens=100_000))
+            self.assertTrue(report["passed"], report)
+            self.assertEqual(report["dispatches"], 4, "起草 2 + 成稿 2")
+            self.assertGreaterEqual(running["peak"], 2, "两个角色没有真正并发")
+
+
+class TickLoopTest(unittest.TestCase):
+    def test_loop_runs_until_the_queue_is_empty(self):
+        from sa2.autonomy.backlog import Backlog, Goal
+        from sa2.autonomy.tick import tick_loop
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            book = Backlog(root / "q.jsonl")
+            for text in ("目标一", "目标二"):
+                book.add(Goal(text=text, dims=("correctness",), criteria=("一段",),
+                              budget_tokens=100_000))
+            judge = Judge(authority=("leader",))
+            judge.register(fc.tested(fc.propose_sections("一段", [S1], ("correctness",))),
+                           proposer="leader")
+            sleeps = []
+            results = tick_loop(book, Ledger(root / "l.jsonl"), judge,
+                                lambda *a, **k: f"{S1}\n正文\n", {"correctness": "正确性"},
+                                max_ticks=5, interval=0, sleep=lambda s: sleeps.append(s))
+            self.assertEqual(len(results), 3, "两个目标 + 一次空转就停")
+            self.assertTrue(results[0].ran and results[1].ran)
+            self.assertFalse(results[2].ran)
+            self.assertEqual(sleeps, [], "interval=0 不该睡")
 
 
 if __name__ == "__main__":

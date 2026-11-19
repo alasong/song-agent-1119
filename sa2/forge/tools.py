@@ -113,3 +113,100 @@ def generate_checker(goal: str, required, llm, out_dir: str | Path,
                      spec={"cmd": [sys.executable, str(path), "{target}"]},
                      dims=(), self_tested=True, scope="stage")
     return path, crit
+
+CHECKER_TEMPLATE = '''import sys
+HEADINGS = __HEADINGS__
+MIN = __MIN__
+text = open(sys.argv[1], encoding="utf-8").read()
+fence = False
+bodies = {}
+current = None
+for line in text.splitlines():
+    s = line.strip()
+    if s.startswith("```"):
+        fence = not fence
+        continue
+    if fence:
+        continue
+    if s in HEADINGS:
+        current = s
+        bodies[current] = []
+        continue
+    if current is not None:
+        bodies[current].append(line)
+problems = []
+for h in HEADINGS:
+    body = "".join(bodies.get(h, []))
+    n = len([c for c in body if not c.isspace()])
+    if h not in bodies:
+        problems.append("缺章节：" + h)
+    elif n < MIN:
+        problems.append("章节正文过短：" + h + " 只有 " + str(n) + " 字")
+for p in problems:
+    print(p)
+sys.exit(1 if problems else 0)
+'''
+
+
+def headings_of(sample: str) -> list[str]:
+    return [line.strip() for line in (sample or "").splitlines()
+            if line.strip().startswith("## ")]
+
+
+def _bodies(sample: str) -> list[int]:
+    heads = []
+    body: list[int] = []
+    current = 0
+    for line in (sample or "").splitlines():
+        if line.strip().startswith("## "):
+            if heads:
+                body.append(current)
+            heads.append(line.strip())
+            current = 0
+        else:
+            current += len([c for c in line if not c.isspace()])
+    if heads:
+        body.append(current)
+    return body
+
+
+def checker_from_sections(sample: str, out_dir: str | Path, name: str = "sections_checker",
+                          min_chars: int | None = None) -> tuple[Path, Criterion]:
+    """从模型的合格样例**确定性**生成检查器：标题齐全 + 每节正文不少于下限。
+
+    为什么不用模型写检查器：一是每阶段一次太贵，二是实测模型写的检查器常常过严
+    （要求每节出现特定关键词），把好交付判死。样例本身是模型给的、天然可满足，
+    从它生成工具就把「可满足性」变成了构造性质，而不是事后再验。
+    """
+    heads = headings_of(sample)
+    if not heads:
+        raise ValueError("样例里没有 `## ` 标题，无法生成章节检查器")
+    sizes = [n for n in _bodies(sample) if n > 0]
+    if min_chars is None:
+        # 取样例里最短一节的六成做下限：样例必然过，同时又逼着真交付写出实质正文
+        min_chars = max(10, int(min(sizes) * 0.6)) if sizes else 10
+
+    code = CHECKER_TEMPLATE.replace("__HEADINGS__", repr(heads)).replace("__MIN__", str(min_chars))
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"{name}.py"
+    path.write_text(code, encoding="utf-8")
+
+    cases = [("样例自身", sample, True),
+             ("缺章节", "\n".join(line for line in sample.splitlines()
+                                  if line.strip() != heads[-1]), False),
+             ("冒充件", "```\n" + "\n".join(heads) + "\n```\n" + "正文" * 200, False)]
+    fails: list[str] = []
+    for label, text, expect_ok in cases:
+        rc, detail = _run(path, text, 10)
+        if (rc == 0) != expect_ok:
+            fails.append(f"{label}：期望{'合格' if expect_ok else '拒收'}，实际 rc={rc}"
+                         f"（{detail.strip()[:80]}）")
+    if fails:
+        path.unlink(missing_ok=True)
+        raise ValueError("章节检查器未通过三反例：" + "；".join(fails))
+
+    crit = Criterion(name=f"{name}·工具", kind="exec",
+                     spec={"cmd": [sys.executable, str(path), "{target}"]},
+                     dims=(), self_tested=True, scope="stage")
+    return path, crit

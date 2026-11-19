@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ..core import gate
@@ -28,7 +29,7 @@ class PDCA:
                  vocab, usage: list[dict] | None = None,
                  max_stage_attempts: int = 2, cases: CaseBook | None = None,
                  state_path: str | Path | None = None, resume: bool = False,
-                 artifact_dir: str | Path | None = None):
+                 artifact_dir: str | Path | None = None, parallel: bool = False):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
@@ -46,6 +47,7 @@ class PDCA:
         self.state_path = Path(state_path) if state_path else None
         self.resume = resume
         self.artifact_dir = Path(artifact_dir) if artifact_dir else None
+        self.parallel = parallel
 
     def run(self, decl: Declaration, seed: str = "", evidence=None) -> dict:
         # ① 前置门：任何一条不成立，一次调用都不发
@@ -87,19 +89,40 @@ class PDCA:
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
                 parts: list[str] = []
-                for role_name in stage.roles:
+                roles = [self.plan.role(name) for name in stage.roles]
+                # 同一阶段的角色互不依赖（都只读上游、互不写对方），所以这是唯一
+                # 不会破坏交接顺序的并发粒度；预算仍串行入账，避免多线程计费打架。
+                if self.parallel and len(roles) > 1:
                     if budget.exhausted():
                         self.ledger.append("budget_stop", "loop", budget.snapshot())
-                        return self._report(False, budget.why(f"{stage.name}·{role_name} 之前"),
+                        return self._report(False, budget.why(f"{stage.name} 之前"),
                                             redone=redone, rejects=rejects,
                                             dispatches=dispatches, budget=budget)
-                    role = self.plan.role(role_name)
-                    out = self.produce(role, stage.name, text, attempt, feedback, requirements)
-                    budget.note(out)
-                    dispatches += 1
-                    self.ledger.append("dispatch", role_name,
-                                       {"stage": stage.name, "attempt": attempt, "chars": len(out)})
-                    parts.append(out)
+                    with ThreadPoolExecutor(max_workers=len(roles)) as pool:
+                        futures = [(role, pool.submit(self.produce, role, stage.name, text,
+                                                      attempt, feedback, requirements))
+                                   for role in roles]
+                        for role, future in futures:
+                            out = future.result()
+                            budget.note(out)
+                            dispatches += 1
+                            self.ledger.append("dispatch", role.name,
+                                               {"stage": stage.name, "attempt": attempt,
+                                                "chars": len(out), "parallel": True})
+                            parts.append(out)
+                else:
+                    for role in roles:
+                        if budget.exhausted():
+                            self.ledger.append("budget_stop", "loop", budget.snapshot())
+                            return self._report(False, budget.why(f"{stage.name}·{role.name} 之前"),
+                                                redone=redone, rejects=rejects,
+                                                dispatches=dispatches, budget=budget)
+                        out = self.produce(role, stage.name, text, attempt, feedback, requirements)
+                        budget.note(out)
+                        dispatches += 1
+                        self.ledger.append("dispatch", role.name,
+                                           {"stage": stage.name, "attempt": attempt, "chars": len(out)})
+                        parts.append(out)
 
                 assembled = "\n\n".join(p for p in parts if p and p.strip())
                 if stage.mode == "append" and text.strip():
