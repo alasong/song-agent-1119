@@ -6,7 +6,7 @@
 一套"能自己长出组织、能自我检测腐烂、能自我重构"的活性组织实验工程。
 设计文档在 `docs/`，执行顺序以 `docs/ROADMAP.md` 为准。
 
-**一句话现状**：已经能无人值守地跑「派活 → 执行 → 机器判红 → 返工」闭环；还不会自己找目标，也还没有跨阶段的自举。
+**一句话现状**：能力验收 5/6（`python3 scripts/bench.py`）。交付入口默认**单 agent**，判据不过才组队；判据能机检也能盲评打分；知识能从公开源取、进提示词、过判据才回写。差的那一条是 G1——真实 24 小时常驻还没跑满。还不会自己找目标，也还没有跨阶段自举。
 
 ---
 
@@ -19,6 +19,7 @@
 | `tests/` | **只能人审后改** | 机检判据，一切「完成」的唯一标准 | 系统不得写入，也不得改断言 |
 | `scripts/` | **只能人审后改** | 入口脚本（跑实验、自举） | 系统不得写入 |
 | `~/xm-runs/` | 系统写 | **项目之外**：任务包、产物、任务判据（check.py）、账本 | 不入库；可用 `XM_RUNS` 改位置 |
+| `sandbox/` | 系统写 | 自举用的隔离副本，改完出 diff 交人审 | 不得直接改项目目录 |
 | `reports/` | 审计方写 | 实验读数与账本（证据） | 只增不改 |
 
 **这条边界是硬的**：`DaemonConfig` 会拒绝任何写到 `artifacts_root`（默认 `~/xm-runs`，即项目外）以外的任务；项目目录（`docs/`、`xm/`、`tests/`、`scripts/`）只能由人审过的变更修改。一见即测的守卫在 `tests/test_isolation.py`。
@@ -30,27 +31,37 @@
 ## 怎么跑
 
 ```bash
-# 全部验收（38+ 条，必须全绿）
+# 全部测试（176 条，必须全绿）
 python3 -m unittest discover -s tests -t . -q
 
-# 无人值守跑一个任务（产物落 runs/）
-DEEPSEEK_API_KEY=... python3 scripts/m0b5_run.py --model deepseek-flash
+# 能力验收：六条判据，退出码 0 = 够了
+python3 scripts/bench.py
+
+# 交付：先一个人干，判不过才组队（决策与读数落 reports/deliver-*.json）
+DEEPSEEK_API_KEY=... python3 scripts/deliver.py --task ~/xm-runs/<任务> --goal "<目标>"
+
+# 同任务 A/B 对照；--judge-existing 只给已有产物做盲评（1 次调用）
+python3 scripts/ab_test.py --judge --task ~/xm-runs/<任务>
+python3 scripts/ab_test.py --judge-existing reports/ab-<ts>.json
+
+# 常驻：跑满 24h 才会写 reports/liveness-*.json
+python3 scripts/resident_run.py --hours 24 --interval 600
 
 # 从 ROADMAP 取下一个任务，生成任务包（没有机检判据就拒绝执行）
 python3 scripts/bootstrap_run.py
 ```
 
-模型通道：`xm/llm.py` 只做一次 chat completion，密钥只从环境变量取，不落盘。
+模型通道：`xm/llm.py` 只做一次 chat completion，密钥不落盘——先读 `DEEPSEEK_API_KEY`，实验环境回退到正在运行的 DSH 进程环境；网络错误有界重试，4xx 不重试。
 
 ---
 
-## 验收口径（三条总判据，认读数不认感觉）
+## 验收口径（认读数不认感觉）
 
-| # | 判据 | 现在 |
-|---|---|---|
-| G1 | 无人在场 24h，自主发起且有进展的任务 ≥ 10 | 未测 |
-| G2 | 注入的已知错误被独立 Verifier 打回 ≥ 80% | 部分测（M0b-3 单例） |
-| G3 | 杀掉节点/实例后能从断点继续 | 未测 |
+六条能力判据在 [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)，由 `scripts/bench.py` 机检，**当前 5/6**：
+G2 组织性 / G3 判据 / G4 知识 / G5 不漂移 / G6 成本 绿；G1（真实 24h 常驻）还在跑墙钟。
+
+「更优」怎么判见 [`docs/OPTIMALITY.md`](docs/OPTIMALITY.md)：开放任务上只能声称 **L1 占优**或
+**L2 未发现更优**，不能声称「最优」。L1 的实现是 `xm/quality.py` 的 5 维盲评 + `scripts/ab_test.py` 的 Pareto 裁定。
 
 设计细节见 `docs/`，架构与决策理由见 `docs/ARCHITECTURE.md`。
 

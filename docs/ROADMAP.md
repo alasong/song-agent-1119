@@ -18,6 +18,11 @@
 
 三条达不到，任何里程碑都不许自称完成。「跑通了」不算，读数才算。
 
+> **口径变更（2026-11-19）**：上面三条是本文件早期的总判据。能力验收已细化为
+> [`ACCEPTANCE.md`](ACCEPTANCE.md) 的 **G1–G6**（自主性/组织性/判据/知识/不漂移/成本），
+> 由 `python3 scripts/bench.py` 机检。两边编号撞名（都是 G1–G3）但含义不同，
+> **冲突时以 ACCEPTANCE.md 为准**，本节只保留作历史口径。
+
 ---
 
 ## 1. 里程碑
@@ -130,6 +135,14 @@ L2+ 元治理、强校验（形式化验证）、物理世界接口、AI 版自�
 |---|---|---|
 | 设计文档 v2.1（含激励层） | 完成 | 设计文档 §15、§16 |
 | ROADMAP v1 | 完成 | 本文件 |
-| M0a 测量仪 | 完成 | `python3 -m unittest discover -s tests -t .` 17 绿；反例测试在 `XM_DISABLE_LIVENESS=1` 下变红；读数见 `reports/m0a.json` |
+| M0a 测量仪 | 完成 | `python3 -m unittest discover -s tests -t .` 全绿；反例测试在 `XM_DISABLE_LIVENESS=1` 下变红；读数见 `reports/m0a.json` |
 | M0b-4 无人值守 | 完成 | daemon 自跑：`deepseek-chat` 2 轮转绿、`deepseek-flash` 2 轮转绿（两者第 1 轮同样因 `test_bad_config` 失败），启动后无人工介入（`m0b4.json` / `m0b4-flash.json`）|
 | M1 骨架+指标+工单总线 | 实现待审 | 人写判据 `tests/test_m1.py` → 系统在 `sandbox/m1` 自举产出 `xm/app.py`（61 行），沙盒 5/5 绿；diff 在 `runs/m1/app.py.diff`，待合入 |
+| 验收读数修正（窗口最好 / 实验标签 / 按目标计数） | 完成 | 提交 `fe144da`；`purpose=experiment` 不入判定，G2 按目标归并（`tests/test_bench_window.py` 11 条） |
+| 组织性（两目标派活） | 完成 | 两个不同目标各 6 角色 × 2 阶段、13 交接、2 次验拒并返工：`reports/scheduler-20261119-204038.json`、`reports/scheduler-20261119-204117.json` |
+| 质量判据（盲评） | 完成 | `xm/quality.py` 5 维 0–3 分、不看出处；首测 A 6 / B 6 平手（`reports/ab-quality-20261119-204143.json`）；区分力待人工校准 |
+| 组织按需（单 agent 优先） | 完成 | `xm/deliver.py`：实测单 agent 1 次调用过判据 vs 组织 32 次（`reports/deliver-20261119-204518.json`） |
+| 知识过手（检索进提示词 + 过判据才回写） | 完成 | 组织运行 `kb.retrieved 1 / written 1`；判据在 `tests/test_reuse.py` |
+| 能力验收 bench（G1–G6） | 进行中 | 5/6；G1 需真实 24h 墙钟，其余五条绿（`reports/bench-20261119-204632.json`） |
+| 组织路径预算闸 | 未开始 | 组织路径无运行期止损；一次升级跑了 32 次调用才算完，即证据 |
+| G1 常驻 24h | 进行中 | `~/xm-runs/resident/checkpoint.json` 记 `running_hours`，跑满自动写 `reports/liveness-*.json` |
