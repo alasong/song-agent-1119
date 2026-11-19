@@ -49,6 +49,11 @@ def _collect(spec_text: str) -> tuple[list[str], list[str]]:
     return struct, content
 
 
+def split_spec(spec_text: str) -> tuple[list[str], list[str]]:
+    """按标记把规格拆成「章节」与「关键词」两摞，调用方各自实例化。"""
+    return _collect(spec_text)
+
+
 def instantiate(spec_text: str, name: str, dims) -> Criterion:
     """从规格文本里取出必答项。混用两种标记就抛，不猜你想要哪种。"""
     struct, content = _collect(spec_text)

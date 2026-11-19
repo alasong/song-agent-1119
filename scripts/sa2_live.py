@@ -66,28 +66,43 @@ def make_llm(usage: list[dict]):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--goal", default=GOAL, help="换一个任务目标")
+    ap.add_argument("--spec-file", default=None, help="规格文件（必须包含：/ 必须出现： 行）")
+    ap.add_argument("--budget", type=int, default=60_000, help="token 上限")
+    ap.add_argument("--max-tokens", type=int, default=1500, help="单次产出上限")
+    ap.add_argument("--name", default="sa2-live", help="产物目录前缀")
     args = ap.parse_args()
 
-    run_dir = runs_root() / "sa2-live" / time.strftime("%Y%m%d-%H%M%S")
+    goal = args.goal
+    spec = (Path(args.spec_file).expanduser().read_text(encoding="utf-8")
+            if args.spec_file else SPEC)
+
+    run_dir = runs_root() / args.name / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(run_dir / "ledger.jsonl")
     cases = CaseBook(run_dir / "cases.jsonl")
     judge = Judge(authority=("leader",), path=run_dir / "criteria.json")
 
     # 判据由生成方提议、过三反例，再交给「领导」登记（判定权不在 sa2 手里）
-    proposals = [
-        fc.tested(fc.propose_sections("三节齐全", [S1, S2, S3], ("correctness",))),
-        fc.tested(fc.propose_content("写清验收", ["验收方式："], ("correctness",))),
-    ]
+    struct_items, content_items = fc.split_spec(spec)
+    proposals = []
+    if struct_items:
+        proposals.append(fc.tested(fc.propose_sections("章节齐全", struct_items, ("correctness",))))
+    if content_items:
+        proposals.append(fc.tested(fc.propose_content("关键要素", content_items, ("correctness",))))
+    if not proposals:
+        print("规格里没有可实例化的判据行", file=sys.stderr)
+        return 1
     for crit in proposals:
         judge.register(crit, proposer="leader")
 
-    decl = Declaration(goal=GOAL, dims=("correctness",),
-                       criteria=("三节齐全", "写清验收"), budget_tokens=60_000)
+    decl = Declaration(goal=goal, dims=("correctness",),
+                       criteria=tuple(c.name for c in proposals),
+                       budget_tokens=args.budget)
     plan, decision = size.plan_for(decl)
 
     usage: list[dict] = []
-    scribe = Scribe(make_llm(usage), spec=SPEC, max_tokens=1500)
+    scribe = Scribe(make_llm(usage), spec=spec, max_tokens=args.max_tokens)
     pdca = PDCA(judge, ledger, plan, scribe, fd.VOCAB, usage=usage,
                 max_stage_attempts=2, cases=cases)
     report = pdca.run(decl, evidence=[])
@@ -123,6 +138,7 @@ def main() -> int:
         print(json.dumps({**readings, "ok": ok}, ensure_ascii=False, indent=2))
     else:
         print("sa 2.0 真模型跑一轮")
+        print(f"  目标：{goal}")
         print(f"  规模决策：{decision.scale}（{decision.reason}）")
         print(f"  判据：{'、'.join(judge.names())}（均过三反例）")
         print(f"  派活 {report['dispatches']} 次，拒绝 {len(report['rejects'])} 次，"
