@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from pathlib import Path
 
 READING = re.compile(r"\d+(?:\.\d+)?\s*(?:次|个|条|分|%|tokens|小时|轮|处|行|人)")
 EVIDENCE = re.compile(
@@ -99,3 +101,42 @@ def check(text: str) -> dict:
         reasons += [f"第 {ln} 行：{ln_text[:60]}" for ln, ln_text in bad[:3]]
 
     return {"ok": not missing, "missing": missing, "reasons": reasons}
+
+@dataclass(frozen=True)
+class RunFacts:
+    """拼自证要用的事实。全部来自运行记录，不由模型提供。"""
+    criteria_ok: bool
+    mode: str                 # single / org
+    calls: int
+    chars: int
+    decision: str             # 为什么这么选
+    rejected: str             # 否掉了什么
+    artifact: str
+    extra: tuple[str, ...] = ()
+
+
+def compose(facts: RunFacts) -> str:
+    """把运行事实拼成三节。缺字段就不编——空证据会被 check() 判红。"""
+    verdict = "exit 0" if facts.criteria_ok else "未通过"
+    conclusion = (f"判据 {verdict}；{facts.mode} 路径；"
+                  f"{facts.calls} 次调用；正文 {facts.chars} 字。")
+    lines = [f"- 选 {facts.mode} → 否掉了{facts.rejected}，因为{facts.decision}。"]
+    evidence = [f"- `check.py` exit {0 if facts.criteria_ok else 1}",
+                f"- 产物 {facts.artifact}",
+                "- 记录 ~/xm-runs/history/history.jsonl"]
+    evidence += [f"- {item}" for item in facts.extra]
+    return ("\n## 结论\n" + conclusion +
+            "\n\n## 依据\n" + "\n".join(lines) +
+            "\n\n## 证据\n" + "\n".join(evidence) + "\n")
+
+
+def attach(path, facts: RunFacts) -> bool:
+    """把自证追加到产物末尾；已有就不再追加（产物是证据，不许重写）。"""
+    target = Path(path)
+    if not target.exists():
+        return False
+    text = target.read_text(encoding="utf-8")
+    if "## 结论" in text and "## 证据" in text:
+        return False
+    target.write_text(text.rstrip() + "\n" + compose(facts), encoding="utf-8")
+    return True

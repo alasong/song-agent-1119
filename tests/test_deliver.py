@@ -94,22 +94,35 @@ class DecisionTest(DeliverTest):
 
 
 class DeliveryDutyTest(DeliverTest):
-    """DNA #9：判据过了但话说不清，不算交付完成。"""
+    """DNA #9：自证由系统拼，模型只写正文——所以正文没三段也应该是合格交付。"""
 
-    def test_criteria_pass_but_unstructured_text_is_not_a_delivery(self):
+    def test_plain_body_gets_self_evidence_appended(self):
         calls: list[str] = []
         report = deliver.deliver("目标", {}, self.single(True, calls, self.plain),
                                  self.org(True, calls))
         self.assertTrue(report["criteria_passed"])
-        self.assertFalse(report["passed"], "三段都没有还敢报完成，就是把自证当免检章")
-        self.assertFalse(report["delivery"]["ok"])
-        self.assertTrue(any("R1" in m for m in report["delivery"]["missing"]))
-
-    def test_structured_text_counts_as_delivery(self):
-        calls: list[str] = []
-        report = deliver.deliver("目标", {}, self.single(True, calls), self.org(True, calls))
         self.assertTrue(report["passed"])
-        self.assertTrue(report["delivery"]["ok"])
+        text = self.plain.read_text(encoding="utf-8")
+        self.assertIn("## 结论", text)
+        self.assertIn("## 依据", text)
+        self.assertIn("## 证据", text)
+        self.assertTrue(report["delivery"]["ok"], report["delivery"]["missing"])
+
+    def test_attach_is_idempotent(self):
+        calls: list[str] = []
+        deliver.deliver("目标", {}, self.single(True, calls, self.plain), self.org(True, calls))
+        first = self.plain.read_text(encoding="utf-8")
+        deliver.deliver("目标", {}, self.single(True, calls, self.plain), self.org(True, calls))
+        second = self.plain.read_text(encoding="utf-8")
+        self.assertEqual(first, second, "第二次交付不许把自证再叠一遍")
+        self.assertEqual(second.count("## 结论"), 1)
+
+    def test_model_written_sections_are_not_overwritten(self):
+        self.plain.write_text(GOOD, encoding="utf-8")
+        calls: list[str] = []
+        deliver.deliver("目标", {}, self.single(True, calls, self.plain), self.org(True, calls))
+        self.assertEqual(self.plain.read_text(encoding="utf-8"), GOOD,
+                         "已经有了就不动：产物是证据，不许重写")
 
 
 if __name__ == "__main__":

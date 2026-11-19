@@ -18,8 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from xm import delivery
 from xm.daemon import Daemon, DaemonConfig
-from xm.single import DELIVERY_BLOCK
 from xm.ledger import Ledger
 from xm.llm import complete
 from xm.paths import runs_root
@@ -72,7 +72,7 @@ def main() -> int:
                 shutil.copy2(aux, run_dir / aux.name)
         target = run_dir / task["target_name"]
         cfg = DaemonConfig(
-            spec=task["spec"] + DELIVERY_BLOCK,   # 与单 agent 路径共用同一段交付自证要求
+            spec=task["spec"],
             target_file=str(target),
             tests=[],
             artifacts_root=str(runs_root()),
@@ -85,6 +85,13 @@ def main() -> int:
                                         max_tokens=int(task.get("max_tokens", 8000)),
                                         extra={"thinking": {"type": "disabled"}})
         summary = Daemon(Ledger(run_dir / "ledger.jsonl"), llm, cfg).run()
+        text = target.read_text(encoding="utf-8") if target.exists() else ""
+        # 自证由系统拼（DNA #9）：稳定性测的必须是真正交付出去的那份文档
+        delivery.attach(target, delivery.RunFacts(
+            criteria_ok=bool(summary["green_at_round"]), mode="single",
+            calls=summary.get("calls", 0), chars=len(text),
+            decision="单 agent 直接跑", rejected="组队",
+            artifact=str(target)))
         text = target.read_text(encoding="utf-8") if target.exists() else ""
         runs.append({"round": i + 1, "green_at_round": summary["green_at_round"],
                      "fingerprint": fingerprint(text)})

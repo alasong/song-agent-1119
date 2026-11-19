@@ -45,10 +45,29 @@ def deliver(goal: str, task: dict, single_fn, org_fn) -> dict:
     return _report(goal, "org", ["单 agent 未过判据，升级组队"], attempts)
 
 
+def _rejected(mode: str, attempts: list[dict]) -> str:
+    """自证里的「否掉了什么」：按实际发生的路径说，不编。"""
+    if len(attempts) > 1:
+        return f"{attempts[0]['mode']} 路径（未过判据）"
+    if mode == "org":
+        return "单 agent 直跑"
+    return "不必要的组队"
+
+
 def _report(goal: str, mode: str, reasons: list[str], attempts: list[dict]) -> dict:
-    # 交付自证（DNA #9）：判据过了只说明"东西对"，还得说明"话说清"
+    # 交付自证（DNA #9）由系统从运行记录拼，不让模型顺手写：
+    # 模型写会漏章节、会编读数，还挤占正文的注意力（实测 1 次调用变 41 次）。
     final = attempts[-1].get("artifact")
-    text = Path(final).read_text(encoding="utf-8") if final and Path(final).exists() else ""
+    last = attempts[-1]
+    body = Path(final).read_text(encoding="utf-8") if final and Path(final).exists() else ""
+    if final and body:
+        delivery.attach(final, delivery.RunFacts(
+            criteria_ok=bool(last.get("passed")), mode=str(last.get("mode") or mode),
+            calls=int(last.get("calls") or 0), chars=len(body),
+            decision="；".join(reasons) or "触发条件未命中",
+            rejected=_rejected(mode, attempts), artifact=str(final)))
+        body = Path(final).read_text(encoding="utf-8")
+    text = body
     dcheck = delivery.check(text)
     criteria_ok = bool(attempts[-1].get("passed"))
     return {

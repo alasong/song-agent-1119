@@ -71,18 +71,19 @@ class DeliveryCheckTest(unittest.TestCase):
         self.assertTrue(delivery.check(text)["ok"])
 
 
-class ExistingArtifactIsRedTest(unittest.TestCase):
-    """试金石：上轮 sa 自己产出的交付，按新规则必须不合格。"""
+class RealArtifactTest(unittest.TestCase):
+    """交付物必须自证：现在由系统追加，所以最新一份应当合格。
 
-    def test_real_deliverable_from_last_run_fails(self):
+    这条如果红，说明交付路径没接上（或又被模型写坏了），是真 bug。
+    """
+
+    def test_newest_delivered_artifact_is_compliant(self):
         candidates = sorted(Path.home().glob("xm-runs/*/sa-run-*/deliverable.md"))
         if not candidates:
             self.skipTest("没有历史交付物可测")
-        text = candidates[-1].read_text(encoding="utf-8")
-        result = delivery.check(text)
-        self.assertFalse(result["ok"],
-                         "历史交付都能过，说明这五条根本卡不住东西")
-        self.assertTrue(any("R1" in m for m in result["missing"]))
+        result = delivery.check(candidates[-1].read_text(encoding="utf-8"))
+        self.assertTrue(result["ok"],
+                        f"最新交付物不自证：{result['missing']}（{candidates[-1]}）")
 
 
 if __name__ == "__main__":

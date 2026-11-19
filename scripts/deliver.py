@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def make_llm(model: str, sink: list[dict]):
-    def llm(messages, max_tokens: int = 2000):
+    # 单 agent 要写满五节，2000 token 会被截断（实测缺「五、为什么会停摆」、步骤 0 条）
+    def llm(messages, max_tokens: int = 8000):
         text, usage = complete_usage(messages, model=model, max_tokens=max_tokens,
                                      extra={"thinking": {"type": "disabled"}})
         sink.append(usage or {})
