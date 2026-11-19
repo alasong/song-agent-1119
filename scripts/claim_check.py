@@ -61,7 +61,7 @@ def scan_text(path: Path) -> list[dict]:
 def scan_bench_reports(reports: Path) -> list[dict]:
     """报告自己说的判定，必须与自己的读数一致。"""
     problems: list[dict] = []
-    for path in sorted(reports.glob("bench-*.json")):
+    for path in sorted(reports.rglob("bench-*.json")):   # 递归：归档的报告也要查，避免归档成盲区
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:

@@ -31,7 +31,7 @@
 ## 怎么跑
 
 ```bash
-# 全部测试（176 条，必须全绿）
+# 全部测试（188 条，必须全绿）
 python3 -m unittest discover -s tests -t . -q
 
 # 能力验收：六条判据，退出码 0 = 够了
