@@ -67,3 +67,28 @@ def complete(
     except Exception as exc:  # 网络层
         raise LLMError(f"{type(exc).__name__}: {exc}") from exc
     return data["choices"][0]["message"]["content"]
+
+
+def complete_usage(messages: list[dict], **kwargs) -> tuple[str, dict]:
+    """返回 (正文, usage)。用于真实成本记账，别再拿字符数估算。"""
+    key = resolve_key()
+    body_dict = {
+        "model": kwargs.get("model", DEFAULT_MODEL),
+        "messages": messages,
+        "max_tokens": kwargs.get("max_tokens", 2400),
+        "temperature": kwargs.get("temperature", 0.2),
+    }
+    if kwargs.get("extra"):
+        body_dict.update(kwargs["extra"])
+    req = urllib.request.Request(
+        DEFAULT_URL, data=json.dumps(body_dict).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=kwargs.get("timeout", 180)) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        raise LLMError(f"HTTP {exc.code}: {exc.read()[:200]!r}") from exc
+    except Exception as exc:
+        raise LLMError(f"{type(exc).__name__}: {exc}") from exc
+    return data["choices"][0]["message"]["content"], data.get("usage", {})

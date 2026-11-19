@@ -1,0 +1,44 @@
+{
+  "ts": "2026-11-19T18:48:00",
+  "passed": 5,
+  "total": 6,
+  "verdict": "不够",
+  "checks": [
+    {
+      "id": "G1 自主性",
+      "passed": false,
+      "evidence": "24h 常驻运行记录 0 条（需要 ≥1）",
+      "next": "写常驻循环跑满 24h，账本统计自主发起且有进展的任务数"
+    },
+    {
+      "id": "G2 组织性",
+      "passed": true,
+      "evidence": "角色=6；阶段=2；交接=13；链完整=True；执行方=llm；独立验证角色=True；验证员裁决=2 次（拒 2），被拒后返工=2 次",
+      "next": "角色由真模型执行、跨 ≥2 阶段交接、验证员裁决并触发返工"
+    },
+    {
+      "id": "G3 判据能力",
+      "passed": true,
+      "evidence": "判据运行时 + daemon 通电（未注册判据即判红）；测试通过",
+      "next": "判据必须能被生成方之外的人注册，生成方改不动，且执行链路真的用它"
+    },
+    {
+      "id": "G4 知识扩展",
+      "passed": true,
+      "evidence": "取：rl 3 条，nlp 3 条；用：RAG 引用 4 条，可溯源=True",
+      "next": "两个领域各取到 ≥2 条带 URL 的事实，且交付里能引用到真实条目"
+    },
+    {
+      "id": "G5 不漂移",
+      "passed": true,
+      "evidence": "同一交付任务 N=3，结论条目重合率=1.0（阈值 0.667）",
+      "next": "三次交付的命名条目要重合 ≥2/3；当前每次都换一套说法"
+    },
+    {
+      "id": "G6 成本可控",
+      "passed": true,
+      "evidence": "预算止损测试 通过",
+      "next": "daemon 记账必须有 budget_tokens/spent_tokens/stopped_by_budget，且超支即停"
+    }
+  ]
+}

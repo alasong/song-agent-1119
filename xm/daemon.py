@@ -58,6 +58,7 @@ class Daemon:
         self.simplify = False
         self.spent_tokens = 0
         self.stopped_by_budget = False
+        self.exact_usage_rounds = 0
 
     def _prompt(self) -> str:
         target = self.ws / self.cfg.target_file
@@ -127,8 +128,16 @@ class Daemon:
                 self.no_progress += 1
                 continue
             self.calls += 1
-            # 成本记账：按返回字符数估算 token（4 字符≈1 token），超预算立即止损
-            self.spent_tokens += max(1, len(raw) // 4)
+            # 成本记账：模型给了真实 usage 就用真实值，否则退回字符估算
+            usage = None
+            if isinstance(raw, tuple):
+                raw, usage = raw
+            if usage:
+                self.spent_tokens += int(usage.get("total_tokens")
+                                         or usage.get("completion_tokens", 0))
+                self.exact_usage_rounds += 1
+            else:
+                self.spent_tokens += max(1, len(raw) // 4)
             if self.cfg.budget_tokens is not None and self.spent_tokens > self.cfg.budget_tokens:
                 self.stopped_by_budget = True
                 self.ledger.append("budget_stop", "daemon",
@@ -178,4 +187,5 @@ class Daemon:
             "budget_tokens": self.cfg.budget_tokens,
             "spent_tokens": self.spent_tokens,
             "stopped_by_budget": self.stopped_by_budget,
+            "exact_usage_rounds": self.exact_usage_rounds,
         }

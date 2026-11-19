@@ -37,6 +37,18 @@ class BudgetTest(unittest.TestCase):
         self.assertGreater(summary["spent_tokens"], 10)
         self.assertEqual(self.led.count("budget_stop"), 1)
 
+    def test_real_usage_is_used_when_provided(self):
+        big = "```markdown\n" + ("x" * 2000) + "\n```"
+
+        def llm_with_usage(messages):
+            return big, {"total_tokens": 500}
+
+        daemon = Daemon(self.led, llm_with_usage, self._cfg(10))
+        summary = daemon.run()
+        self.assertTrue(summary["stopped_by_budget"])
+        self.assertEqual(summary["spent_tokens"], 500)      # 用了真实值，不是字符估算
+        self.assertEqual(summary["exact_usage_rounds"], 1)
+
     def test_no_budget_means_no_stop(self):
         ok = "```markdown\nok\n```"
         daemon = Daemon(self.led, lambda m: ok, self._cfg(None))

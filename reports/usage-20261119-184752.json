@@ -1,0 +1,9 @@
+{
+  "ts": "2026-11-19T18:47:52",
+  "kind": "usage",
+  "exact_usage_rounds": 1,
+  "spent_tokens": 166,
+  "budget_tokens": 5000,
+  "stopped_by_budget": false,
+  "passed": true
+}
