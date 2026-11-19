@@ -56,7 +56,7 @@ def main() -> int:
     ledger = Ledger(args.ledger)
     cfg = DaemonConfig(
         spec=SPEC,
-        target_file="docs/ai-money.md",
+        target_file="runs/2026-11-19-m0b5/ai-money.md",
         tests=["tests.test_analysis"],
         max_rounds=args.rounds,
         patience=2,

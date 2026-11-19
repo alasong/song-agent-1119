@@ -43,14 +43,18 @@ def complete(
     max_tokens: int = 2400,
     temperature: float = 0.2,
     timeout: int = 180,
+    extra: dict | None = None,
 ) -> str:
     key = resolve_key()
-    body = json.dumps({
+    body_dict = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-    }).encode()
+    }
+    if extra:
+        body_dict.update(extra)  # 例如 {"thinking": {"type": "disabled"}}：推理模型可能把预算全烧在思维链
+    body = json.dumps(body_dict).encode()
     req = urllib.request.Request(
         DEFAULT_URL, data=body,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

@@ -4,3 +4,8 @@
 # Python 缓存
 __pycache__/
 *.pyc
+# 系统自举工作区（不入库）
+sandbox/
+
+# 执行产物（系统写，按日期+任务分目录，不入库；需要留证据就放 reports/）
+runs/

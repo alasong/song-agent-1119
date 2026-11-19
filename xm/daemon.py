@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from xm.ledger import Ledger
@@ -22,6 +22,18 @@ class DaemonConfig:
     max_rounds: int = 8
     patience: int = 3
     fence_lang: str = "python"
+    in_sandbox: bool = False
+    context_files: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # 产物边界：任务产出只能落在 runs/ 下，不得写进项目正文（docs/xm/tests）
+        # 例外：在 sandbox/ 里自举时允许改代码，改完出 diff 交人审，不直接落项目
+        if self.in_sandbox:
+            return
+        if not self.target_file.startswith("runs/"):
+            raise ValueError(
+                f"任务产物必须写在 runs/ 下，拒绝写 {self.target_file}——项目目录只能由人审过的变更修改"
+            )
 
 
 class Daemon:
@@ -42,11 +54,16 @@ class Daemon:
         current = target.read_text(encoding="utf-8") if target.exists() else "（文件还不存在）"
         feedback = self.last_output[-2000:] if self.last_output else "（还没有跑过测试）"
         simplify = "\\n注意：已连续多轮失败，请优先给出最简单能跑通的实现。\\n" if self.simplify else ""
+        deps = ""
+        for rel in self.cfg.context_files:
+            path = self.ws / rel
+            if path.exists():
+                deps += f"\\n### {rel}\\n```python\\n{path.read_text(encoding='utf-8')[:2500]}\\n```\\n"
         return f"""你在一个自动化循环里，没有人看着。目标：让验收测试全部通过。
 
 ## 规格
 {self.cfg.spec}
-
+{deps}
 ## 当前 {self.cfg.target_file}
 ```python
 {current}

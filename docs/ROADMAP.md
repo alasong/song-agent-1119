@@ -132,3 +132,4 @@ L2+ 元治理、强校验（形式化验证）、物理世界接口、AI 版自�
 | ROADMAP v1 | 完成 | 本文件 |
 | M0a 测量仪 | 完成 | `python3 -m unittest discover -s tests -t .` 17 绿；反例测试在 `XM_DISABLE_LIVENESS=1` 下变红；读数见 `reports/m0a.json` |
 | M0b-4 无人值守 | 完成 | daemon 自跑：`deepseek-chat` 2 轮转绿、`deepseek-flash` 2 轮转绿（两者第 1 轮同样因 `test_bad_config` 失败），启动后无人工介入（`m0b4.json` / `m0b4-flash.json`）|
+| M1 骨架+指标+工单总线 | 实现待审 | 人写判据 `tests/test_m1.py` → 系统在 `sandbox/m1` 自举产出 `xm/app.py`（61 行），沙盒 5/5 绿；diff 在 `runs/m1/app.py.diff`，待合入 |
