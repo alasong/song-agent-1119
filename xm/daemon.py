@@ -24,15 +24,20 @@ class DaemonConfig:
     fence_lang: str = "python"
     in_sandbox: bool = False
     context_files: list[str] = field(default_factory=list)
+    artifacts_root: str = "runs"
+    verify_cmd: list[str] | None = None
 
     def __post_init__(self) -> None:
-        # 产物边界：任务产出只能落在 runs/ 下，不得写进项目正文（docs/xm/tests）
+        # 产物边界：任务产出只能落在 artifacts_root（默认在项目之外）下，
+        # 绝不写进项目正文（docs/xm/tests/scripts）。
         # 例外：在 sandbox/ 里自举时允许改代码，改完出 diff 交人审，不直接落项目
         if self.in_sandbox:
             return
-        if not self.target_file.startswith("runs/"):
+        root = Path(self.artifacts_root).resolve()
+        target = Path(self.target_file).resolve()
+        if not target.is_relative_to(root):
             raise ValueError(
-                f"任务产物必须写在 runs/ 下，拒绝写 {self.target_file}——项目目录只能由人审过的变更修改"
+                f"任务产物必须落在 {root} 下，拒绝写 {target}——项目目录只能由人审过的变更修改"
             )
 
 
@@ -85,10 +90,9 @@ class Daemon:
         return max(blocks, key=len)
 
     def _run_tests(self) -> tuple[int, str]:
-        proc = subprocess.run(
-            [sys.executable, "-m", "unittest", *self.cfg.tests, "-q"],
-            cwd=self.ws, capture_output=True, text=True,
-        )
+        # 任务判据跟着任务走：给了 verify_cmd 就跑它（一次性任务的 check 脚本在 run 目录里）
+        cmd = self.cfg.verify_cmd or [sys.executable, "-m", "unittest", *self.cfg.tests, "-q"]
+        proc = subprocess.run(cmd, cwd=self.ws, capture_output=True, text=True)
         return proc.returncode, (proc.stderr or "") + (proc.stdout or "")
 
     def run(self) -> dict:
