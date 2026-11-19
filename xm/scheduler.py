@@ -41,7 +41,9 @@ class Scheduler:
             raise ValueError("编制方案缺 roles 或 process")
 
         upstream: dict | None = None
+        last_producer: dict | None = None
         artifacts: list[dict] = []
+        reworks = 0
         for stage in process:
             for role in roles:
                 self.ledger.append("dispatch", "scheduler", {
@@ -63,6 +65,23 @@ class Scheduler:
                 self.ledger.append("progress", role["name"],
                                    {"stage": stage, "artifact": artifact.get("id"),
                                     "upstream": artifact.get("upstream")})
+
+                # 验证拒绝 → 触发一次返工：只判不改等于白判（每阶段最多一次）
+                if artifact.get("verdict") == "reject" and last_producer and worker is not None:
+                    rework = worker(last_producer, f"{stage}·返工", artifact)
+                    rework = dict(rework)
+                    rework["id"] = f"{stage}:{last_producer['name']}:rework"
+                    rework["upstream"] = artifact["id"]
+                    rework["rework_reason"] = artifact.get("reason", "")
+                    artifacts.append(rework)
+                    reworks += 1
+                    self.ledger.append("rework", last_producer["name"],
+                                       {"stage": stage, "reason": artifact.get("reason", ""),
+                                        "artifact": rework["id"]})
+                    artifact = rework
+
+                if role.get("kind") != "verifier":
+                    last_producer = role
                 upstream = artifact
 
         chain_ok = all(
@@ -76,6 +95,7 @@ class Scheduler:
             "stages": len(process),
             "dispatches": len(self.dispatch_log),
             "handoffs": max(0, len(artifacts) - 1),
+            "reworks": reworks,
             "chain_ok": chain_ok,
             "distinct_roles": len(names),
             "distinct_kinds": len(kinds),

@@ -65,6 +65,7 @@ def main() -> int:
         artifacts = all_artifacts
         verdicts = [a for a in artifacts if "verdict" in a]
         stats["verdicts"] = len(verdicts)
+        # reworks 直接用调度器返回的计数（返工产物由调度器内部生成，不经过 worker 收集口）
         stats["verdict_pass"] = sum(1 for a in verdicts if a["verdict"] == "pass")
         stats["verdict_reject"] = sum(1 for a in verdicts if a["verdict"] == "reject")
         stats["sample_artifact"] = artifacts[-1]["content"][:120] if artifacts else ""

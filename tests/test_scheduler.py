@@ -60,6 +60,38 @@ class SchedulerTest(unittest.TestCase):
         self.assertIsNone(seen[0])
         self.assertEqual(seen[1], "拆解:拆解者")
 
+    def test_reject_triggers_one_rework_per_stage(self):
+        calls = {"producer": 0}
+
+        def worker(role, stage, upstream):
+            if role["kind"] == "verifier":
+                return {"id": f"{stage}:v", "upstream": (upstream or {}).get("id"),
+                        "verdict": "reject", "reason": "证据不足"}
+            calls["producer"] += 1
+            return {"id": f"{stage}:{role['name']}:{calls['producer']}",
+                    "upstream": (upstream or {}).get("id"), "content": "x"}
+
+        stats = Scheduler(self.led).run(PLAN, worker=worker)
+        # 每个阶段：3 个生产/其他角色 + 1 次返工
+        self.assertEqual(stats["reworks"], 2)
+        self.assertEqual(self.led.count("rework"), 2)
+
+    def test_rework_artifact_feeds_downstream(self):
+        order = []
+
+        def worker(role, stage, upstream):
+            order.append((stage, role["name"], (upstream or {}).get("id")))
+            if role["kind"] == "verifier":
+                return {"id": f"{stage}:v", "upstream": (upstream or {}).get("id"),
+                        "verdict": "reject", "reason": "再改"}
+            return {"id": f"{stage}:{role['name']}:{len(order)}",
+                    "upstream": (upstream or {}).get("id"), "content": "x"}
+
+        Scheduler(self.led).run({"process": ["拆解"], "roles": PLAN["roles"]}, worker=worker)
+        # 返工产物成为下游（下一阶段/下一角色）的上游
+        # 返工由「验证员之前最后一个生产角色」承接，输入是验证裁决
+        self.assertIn(("拆解·返工", "实现者", "拆解:v"), order)
+
     def test_missing_plan_raises(self):
         with self.assertRaises(ValueError):
             Scheduler(self.led).run({"roles": [], "process": []})

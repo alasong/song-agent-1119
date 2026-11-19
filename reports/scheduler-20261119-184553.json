@@ -1,0 +1,25 @@
+{
+  "ts": "2026-11-19T18:45:53",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 2,
+  "dispatches": 12,
+  "handoffs": 13,
+  "reworks": 0,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "verdicts": 2,
+  "verdict_pass": 0,
+  "verdict_reject": 2,
+  "sample_artifact": "**装配层技术裁决（返工）**\n\n1. **结论**：上游驳回成立。装配层交付须含可执行装配脚本、依赖锁定文件、一键启动命令、端到端运行日志与回归用例通过率，文档不构成验收物。\n2. **边界条件**：装配层仅负责组件装配、依赖解析与启动编",
+  "distinct_role_names": [
+    "代码与资产整理员",
+    "回归用例设计者",
+    "接口契约研究员",
+    "独立验证员",
+    "装配实现工程师",
+    "装配领域专家"
+  ]
+}
