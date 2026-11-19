@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from xm import deliver as deliver_mod
+from xm import history, quality
 from xm.kb import KnowledgeBase, default_path, writeback_if_passed
 from xm.llm import complete_usage
 from xm.sa_task import run as sa_run
@@ -68,9 +69,34 @@ def main() -> int:
                      max_roles=args.max_roles, max_stages=args.max_stages)
         return {"passed": rep["passed"], "rounds": len(rep["attempts"]),
                 "chars": rep["chars"], "artifact": rep["deliverable"],
+                "roles": rep.get("org", {}).get("roles") or [],
+                "stages": len(rep.get("org", {}).get("process") or []),
                 **usage_stats(org_sink)}
 
     report = deliver_mod.deliver(args.goal, task, single_fn, org_fn)
+
+    # 交付后打分并落跨轮记录：没有质量分就永远说不清「比上轮强在哪」
+    final = report.get("final_artifact") or ""
+    text = Path(final).read_text(encoding="utf-8") if final and Path(final).exists() else ""
+    score = None
+    if text.strip():
+        judge_sink: list[dict] = []
+        try:
+            judged = quality.judge([text, text], lambda m: make_llm(args.model, judge_sink)(m, 1200))
+            score = max(r["total"] for r in judged["scores"])   # 同文自比，只取绝对分
+        except Exception as exc:  # 打分失败要让记录里看得见，不能悄悄写 None
+            report["quality_error"] = f"{type(exc).__name__}: {exc}"
+    last = report["attempts"][-1]
+    history.append(history.Record(
+        ts=history.now_ts(), family=task_dir.name, goal=args.goal,
+        org_signature=history.signature(last.get("roles"), int(last.get("stages") or 0)),
+        mode=report["mode"], passed=bool(report["passed"]), quality=score,
+        calls=int(last.get("calls") or 0),
+        prompt_tokens=int(last.get("prompt_tokens") or 0),
+        completion_tokens=int(last.get("completion_tokens") or 0),
+        chars=int(last.get("chars") or 0), artifact=str(final),
+    ))
+    report["quality_score"] = score
     out = ROOT / "reports"
     out.mkdir(exist_ok=True)
     path = out / f"deliver-{time.strftime('%Y%m%d-%H%M%S')}.json"
