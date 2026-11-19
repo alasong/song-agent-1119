@@ -1,0 +1,44 @@
+{
+  "ts": "2026-11-19T18:29:24",
+  "passed": 2,
+  "total": 6,
+  "verdict": "不够",
+  "checks": [
+    {
+      "id": "G1 自主性",
+      "passed": false,
+      "evidence": "24h 常驻运行记录 0 条（需要 ≥1）",
+      "next": "写常驻循环跑满 24h，账本统计自主发起且有进展的任务数"
+    },
+    {
+      "id": "G2 组织性",
+      "passed": true,
+      "evidence": "调度器=有；最近一次派活覆盖角色数=6",
+      "next": "按 OrgPlan 派活给 ≥3 个不同角色，并把记录落到 reports/scheduler-*.json"
+    },
+    {
+      "id": "G3 判据能力",
+      "passed": false,
+      "evidence": "判据运行时 xm/criteria_runtime.py 不存在",
+      "next": "写 criteria_runtime：文字判据→可执行检查，登记版本，生成方不可改"
+    },
+    {
+      "id": "G4 知识扩展",
+      "passed": false,
+      "evidence": "知识底座 xm/kb.py 不存在",
+      "next": "写 xm/kb.py：检索 + 只收已验证事实；接一个领域源做端到端"
+    },
+    {
+      "id": "G5 不漂移",
+      "passed": false,
+      "evidence": "重复运行记录 0 条（需要 ≥3）",
+      "next": "同一任务跑三次，把三次 result.json 落盘到同一目录下比对"
+    },
+    {
+      "id": "G6 成本可控",
+      "passed": true,
+      "evidence": "预算止损测试 通过",
+      "next": "daemon 记账必须有 budget_tokens/spent_tokens/stopped_by_budget，且超支即停"
+    }
+  ]
+}

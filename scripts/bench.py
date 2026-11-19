@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -21,22 +22,29 @@ def _has(*rel_paths: str) -> bool:
 
 
 def g1_autonomy() -> dict:
-    resident = _has("xm/scheduler.py")
+    records = sorted((ROOT / "reports").glob("liveness-*.json"))
+    long_run = [r for r in records
+                if json.loads(r.read_text(encoding="utf-8")).get("hours", 0) >= 24]
+    ok = bool(long_run)
     return {
-        "passed": resident,
-        "evidence": "常驻调度模块 xm/scheduler.py " + ("存在" if resident else "不存在"),
-        "next": "写 xm/scheduler.py：心跳循环 + 无进展检测 + 自主派活，跑满 24h 读账本",
+        "passed": ok,
+        "evidence": f"24h 常驻运行记录 {len(long_run)} 条（需要 ≥1）",
+        "next": "写常驻循环跑满 24h，账本统计自主发起且有进展的任务数",
     }
 
 
 def g2_organization() -> dict:
-    hiring = _has("xm/hiring.py")
-    dispatch = _has("xm/scheduler.py")
-    ok = hiring and dispatch
+    scheduler = _has("xm/scheduler.py")
+    records = sorted((ROOT / "reports").glob("scheduler-*.json"))
+    best = 0
+    if records:
+        latest = json.loads(records[-1].read_text(encoding="utf-8"))
+        best = latest.get("distinct_roles", 0)
+    ok = scheduler and best >= 3
     return {
         "passed": ok,
-        "evidence": f"组队={'有' if hiring else '无'}，派活={'有' if dispatch else '无'}",
-        "next": "有了 OrgPlan 之后，让 scheduler 按 plan 派给 ≥3 个角色并做交接",
+        "evidence": f"调度器={'有' if scheduler else '无'}；最近一次派活覆盖角色数={best}",
+        "next": "按 OrgPlan 派活给 ≥3 个不同角色，并把记录落到 reports/scheduler-*.json",
     }
 
 
@@ -59,25 +67,30 @@ def g4_knowledge() -> dict:
 
 
 def g5_stability() -> dict:
-    results = sorted(RUNS.glob("**/result.json")) if RUNS.exists() else []
-    same_task = [r for r in results if "repeat" in str(r)]
-    ok = len(same_task) >= 3
+    records = sorted((ROOT / "reports").glob("stability-*.json"))
+    if not records:
+        return {"passed": False, "evidence": "没有稳定性探针记录",
+                "next": "跑 scripts/stability_probe.py：同目标 N=3，比关键结论"}
+    latest = json.loads(records[-1].read_text(encoding="utf-8"))
+    ok = latest.get("n", 0) >= 3 and latest.get("score", 0) >= latest.get("threshold", 2 / 3)
     return {
         "passed": ok,
-        "evidence": f"重复运行记录 {len(same_task)} 条（需要 ≥3）",
-        "next": "同一任务跑三次，把三次 result.json 落盘到同一目录下比对",
+        "evidence": f"N={latest.get('n')}，一致率={latest.get('score')}，阈值={round(latest.get('threshold', 0), 3)}",
+        "next": "同一任务/目标重复 N=3，关键结论一致率须 ≥2/3",
     }
 
 
 def g6_cost() -> dict:
-    # 判据：每个 run 的 result.json 都要有预算与实耗字段
-    results = sorted(RUNS.glob("**/result.json")) if RUNS.exists() else []
-    missing = [r for r in results if "budget" not in json.loads(r.read_text(encoding="utf-8"))]
-    ok = bool(results) and not missing
+    # 判据不是「文件里有字段」，而是「预算超了真的会停」——用测试证明
+    proc = subprocess.run(
+        [sys.executable, "-m", "unittest", "tests.test_budget", "-q"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    ok = proc.returncode == 0
     return {
         "passed": ok,
-        "evidence": f"{len(results)} 个运行记录，缺预算字段 {len(missing)} 个",
-        "next": "daemon 记账时写入 budget/spent/stopped_by_budget 三个字段",
+        "evidence": "预算止损测试 " + ("通过" if ok else "未通过"),
+        "next": "daemon 记账必须有 budget_tokens/spent_tokens/stopped_by_budget，且超支即停",
     }
 
 

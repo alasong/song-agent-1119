@@ -1,0 +1,72 @@
+{
+  "ts": "2026-11-19T18:29:48",
+  "goal": "给一个中型团队的内部工具做一套可回归的自动化验收",
+  "n": 3,
+  "pairwise_jaccard": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "score": 1.0,
+  "threshold": 0.6666666666666666,
+  "passed": true,
+  "runs": [
+    {
+      "kinds": [
+        "curator",
+        "executor",
+        "expert",
+        "planner",
+        "researcher",
+        "verifier"
+      ],
+      "names": [
+        "需求与用例策展人",
+        "自动化架构规划师",
+        "测试实现工程师",
+        "领域专家",
+        "独立验收验证员",
+        "回归运行与维护研究员"
+      ],
+      "total_budget": 200000
+    },
+    {
+      "kinds": [
+        "curator",
+        "executor",
+        "expert",
+        "planner",
+        "researcher",
+        "verifier"
+      ],
+      "names": [
+        "需求与用例策展人",
+        "测试架构规划师",
+        "自动化实现工程师",
+        "工具与流程专家",
+        "独立验收验证员",
+        "资料与知识研究员"
+      ],
+      "total_budget": 200000
+    },
+    {
+      "kinds": [
+        "curator",
+        "executor",
+        "expert",
+        "planner",
+        "researcher",
+        "verifier"
+      ],
+      "names": [
+        "需求与用例策展人",
+        "自动化架构规划师",
+        "测试框架研究员",
+        "自动化用例实现者",
+        "领域验收专家",
+        "独立验收验证者"
+      ],
+      "total_budget": 200000
+    }
+  ]
+}

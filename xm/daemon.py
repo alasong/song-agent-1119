@@ -26,6 +26,7 @@ class DaemonConfig:
     context_files: list[str] = field(default_factory=list)
     artifacts_root: str = "runs"
     verify_cmd: list[str] | None = None
+    budget_tokens: int | None = None
 
     def __post_init__(self) -> None:
         # 产物边界：任务产出只能落在 artifacts_root（默认在项目之外）下，
@@ -53,6 +54,8 @@ class Daemon:
         self.last_output = ""
         self.final_rc: int | None = None
         self.simplify = False
+        self.spent_tokens = 0
+        self.stopped_by_budget = False
 
     def _prompt(self) -> str:
         target = self.ws / self.cfg.target_file
@@ -105,6 +108,14 @@ class Daemon:
                 self.no_progress += 1
                 continue
             self.calls += 1
+            # 成本记账：按返回字符数估算 token（4 字符≈1 token），超预算立即止损
+            self.spent_tokens += max(1, len(raw) // 4)
+            if self.cfg.budget_tokens is not None and self.spent_tokens > self.cfg.budget_tokens:
+                self.stopped_by_budget = True
+                self.ledger.append("budget_stop", "daemon",
+                                   {"round": rnd, "spent": self.spent_tokens,
+                                    "budget": self.cfg.budget_tokens})
+                break
 
             block = self._parse(raw)
             if block is None:
@@ -145,4 +156,7 @@ class Daemon:
             "final_rc": self.final_rc,
             "no_progress_peak": self.no_progress,
             "ledger_events": len(self.ledger.read()),
+            "budget_tokens": self.cfg.budget_tokens,
+            "spent_tokens": self.spent_tokens,
+            "stopped_by_budget": self.stopped_by_budget,
         }
