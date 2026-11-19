@@ -23,6 +23,8 @@ def main() -> int:
     ap.add_argument("--task", required=True, help="任务目录（含 task.json / check.py）")
     ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--max-roles", type=int, default=None, help="收缩编制：最多几个角色（保留 verifier）")
+    ap.add_argument("--max-stages", type=int, default=None, help="收缩流程：最多几个阶段")
     args = ap.parse_args()
 
     task_dir = Path(args.task).expanduser().resolve()
@@ -34,7 +36,8 @@ def main() -> int:
         messages, model=args.model, max_tokens=max_tokens,
         extra={"thinking": {"type": "disabled"}},
     )
-    report = run(args.goal, task_dir, llm, rounds=args.rounds)
+    report = run(args.goal, task_dir, llm, rounds=args.rounds,
+                 max_roles=args.max_roles, max_stages=args.max_stages)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["passed"] else 1
 

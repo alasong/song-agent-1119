@@ -62,6 +62,23 @@ class SaTaskTest(unittest.TestCase):
         self.assertEqual(len(report["attempts"]), 2)
         self.assertEqual(report["attempts"][0]["rc"], 1)
 
+    def test_format_hint_reaches_the_editor(self):
+        seen = {}
+
+        def capturing_llm(messages, max_tokens=2000):
+            prompt = messages[0]["content"]
+            if "整合成一份完整" in prompt:
+                seen["editor"] = prompt
+            return fake_llm(messages, max_tokens)
+
+        task = self._mk_task("import sys\nsys.exit(0)\n")
+        data = json.loads((task / "task.json").read_text(encoding="utf-8"))
+        data["format_hint"] = "## 示例\n- 第一条"
+        (task / "task.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        run("做个任务", task, capturing_llm, rounds=1)
+        self.assertIn("格式样例", seen["editor"])
+        self.assertIn("第一条", seen["editor"])
+
     def test_keeps_failing_is_reported(self):
         task = self._mk_task("import sys\nsys.exit(1)\n")
         report = run("做个任务", task, fake_llm, rounds=2)

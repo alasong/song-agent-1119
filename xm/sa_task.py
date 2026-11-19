@@ -26,18 +26,42 @@ def _run_check(check: Path, target: Path) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
-def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
+def run(goal: str, task_dir: Path, llm, rounds: int = 3,
+        max_roles: int | None = None, max_stages: int | None = None) -> dict:
     run_dir = task_dir / f"sa-run-{time.strftime('%Y%m%d-%H%M%S')}"
     run_dir.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(run_dir / "ledger.jsonl")
     task = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
     spec = task["spec"]
+    format_hint = task.get("format_hint", "")
     check = task_dir / task.get("check", "check.py")
     deliverable = run_dir / "deliverable.md"
 
     # ① Super：目标 → 编制
+    t0 = time.time()
     plan = plan_org(goal, lambda m: llm(m, max_tokens=2000), budget_cap=200_000)
-    ledger.append("org_plan", "hr", {
+    t_hire = round(time.time() - t0, 2)
+
+    # 流程自优化：依据上一轮的成本收缩编制，但必须保留独立验证角色
+    adjustment = None
+    if (max_roles and len(plan.roles) > max_roles) or (max_stages and len(plan.process) > max_stages):
+        from xm.hiring import OrgPlan
+        roles = list(plan.roles)
+        if max_roles and len(roles) > max_roles:
+            keep = roles[: max_roles - 1]
+            verifiers = [r for r in roles if r.kind == "verifier"]
+            if verifiers and verifiers[0] not in keep:
+                keep.append(verifiers[0])
+            roles = keep
+        process = plan.process[:max_stages] if max_stages else plan.process
+        adjustment = {
+            "roles_from": len(plan.roles), "roles_to": len(roles),
+            "stages_from": len(plan.process), "stages_to": len(process),
+            "reason": "上一轮 6 角色 × 7 阶段 = 42 次派活、约 46 次调用，成本过高；本次收缩编制并保留独立验证角色",
+        }
+        plan = OrgPlan(goal=plan.goal, roles=roles, process=process)
+
+    ledger.append("org_plan", "super", {
         "goal": goal,
         "roles": [r.name for r in plan.roles],
         "kinds": [r.kind for r in plan.roles],
@@ -45,6 +69,7 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
         "total_budget": plan.total_budget,
     })
 
+    t1 = time.time()
     # ② 派活：角色带目标干活，逐级交接
     collected: list[dict] = []
 
@@ -73,6 +98,7 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
 
     stats = Scheduler(ledger).run(
         {"roles": [asdict(r) for r in plan.roles], "process": plan.process}, worker=worker)
+    t_dispatch = round(time.time() - t1, 2)
     ledger.append("dispatch_done", "scheduler", stats)
 
     # ③ 主编：把组织产出整合成一份可验收的交付
@@ -84,12 +110,15 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
 
 ## 格式要求（必须逐条满足）
 {spec}
+{("## 格式样例（照这个写，判据按这个判）" + chr(10) + format_hint) if format_hint else ""}
 
 ## 各角色交付
 {joined}
 
 只返回文档正文（Markdown），不要任何解释。"""
+    t2 = time.time()
     doc = _call(llm, editor_prompt, max_tokens=4000)
+    t_edit = round(time.time() - t2, 2)
     deliverable.write_text(doc, encoding="utf-8")
 
     # ④ 独立验收 + 返工
@@ -106,6 +135,7 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
 
 请修正后重写完整文档，仍然只返回正文（Markdown），并逐条满足格式要求：
 {spec}
+{("## 格式样例（照这个写）" + chr(10) + format_hint) if format_hint else ""}
 
 上一版内容：
 {doc[:6000]}"""
@@ -117,6 +147,15 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
 
     report = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "process": {
+            "org_adjustment": adjustment,
+            "timing_s": {"hire": t_hire, "dispatch": t_dispatch, "edit": t_edit},
+            "handoffs": stats.get("handoffs"),
+            "chain_ok": stats.get("chain_ok"),
+            "roles": [r.name for r in plan.roles],
+            "stages": len(plan.process),
+            "attempts": len(attempts),
+        },
         "goal": goal,
         "org": {"roles": [r.name for r in plan.roles], "process": plan.process,
                 "total_budget": plan.total_budget},
