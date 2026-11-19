@@ -1,0 +1,44 @@
+{
+  "ts": "2026-11-19T18:30:57",
+  "passed": 5,
+  "total": 6,
+  "verdict": "不够",
+  "checks": [
+    {
+      "id": "G1 自主性",
+      "passed": false,
+      "evidence": "24h 常驻运行记录 0 条（需要 ≥1）",
+      "next": "写常驻循环跑满 24h，账本统计自主发起且有进展的任务数"
+    },
+    {
+      "id": "G2 组织性",
+      "passed": true,
+      "evidence": "调度器=有；最近一次派活覆盖角色数=6",
+      "next": "按 OrgPlan 派活给 ≥3 个不同角色，并把记录落到 reports/scheduler-*.json"
+    },
+    {
+      "id": "G3 判据能力",
+      "passed": true,
+      "evidence": "判据运行时存在；越权/执行/版本测试 通过",
+      "next": "判据必须能被生成方之外的人注册，且生成方改不动"
+    },
+    {
+      "id": "G4 知识扩展",
+      "passed": true,
+      "evidence": "跨领域演示：2 个领域，每领域命中=[1, 1]",
+      "next": "两个领域各检索到事实，且换领域不改代码"
+    },
+    {
+      "id": "G5 不漂移",
+      "passed": true,
+      "evidence": "N=3，一致率=1.0，阈值=0.667",
+      "next": "同一任务/目标重复 N=3，关键结论一致率须 ≥2/3"
+    },
+    {
+      "id": "G6 成本可控",
+      "passed": true,
+      "evidence": "预算止损测试 通过",
+      "next": "daemon 记账必须有 budget_tokens/spent_tokens/stopped_by_budget，且超支即停"
+    }
+  ]
+}

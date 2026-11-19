@@ -1,0 +1,27 @@
+{
+  "ts": "2026-11-19T18:30:52",
+  "kb_path": "/Users/song/xm-runs/kb/kb.jsonl",
+  "domains": [
+    "agent-skill",
+    "delivery"
+  ],
+  "total_facts": 4,
+  "per_domain": {
+    "agent-skill": {
+      "query": "契约",
+      "hits": [
+        "Skill 的输入契约必须显式声明"
+      ],
+      "count": 1
+    },
+    "delivery": {
+      "query": "判据",
+      "hits": [
+        "没有机检判据的任务不算完成"
+      ],
+      "count": 1
+    }
+  },
+  "code_changed_between_domains": false,
+  "passed": true
+}

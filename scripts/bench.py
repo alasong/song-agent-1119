@@ -49,20 +49,34 @@ def g2_organization() -> dict:
 
 
 def g3_criteria() -> dict:
-    runtime = _has("xm/criteria_runtime.py")
+    if not _has("xm/criteria_runtime.py"):
+        return {"passed": False, "evidence": "判据运行时不存在",
+                "next": "写 criteria_runtime：文字判据→可执行检查，登记版本，生成方不可改"}
+    proc = subprocess.run([sys.executable, "-m", "unittest", "tests.test_criteria_runtime", "-q"],
+                          cwd=ROOT, capture_output=True, text=True)
+    ok = proc.returncode == 0
     return {
-        "passed": runtime,
-        "evidence": "判据运行时 xm/criteria_runtime.py " + ("存在" if runtime else "不存在"),
-        "next": "写 criteria_runtime：文字判据→可执行检查，登记版本，生成方不可改",
+        "passed": ok,
+        "evidence": "判据运行时存在；越权/执行/版本测试 " + ("通过" if ok else "未通过"),
+        "next": "判据必须能被生成方之外的人注册，且生成方改不动",
     }
 
 
 def g4_knowledge() -> dict:
-    kb = _has("xm/kb.py")
+    if not _has("xm/kb.py"):
+        return {"passed": False, "evidence": "知识底座不存在",
+                "next": "写 xm/kb.py：检索 + 只收已验证事实；接一个领域源做端到端"}
+    records = sorted((ROOT / "reports").glob("kb-demo-*.json"))
+    if not records:
+        return {"passed": False, "evidence": "有底座但没有跨领域演示记录",
+                "next": "跑 scripts/kb_demo.py：两个领域各检索到事实，且不改代码"}
+    latest = json.loads(records[-1].read_text(encoding="utf-8"))
+    ok = bool(latest.get("passed")) and len(latest.get("domains", [])) >= 2
     return {
-        "passed": kb,
-        "evidence": "知识底座 xm/kb.py " + ("存在" if kb else "不存在"),
-        "next": "写 xm/kb.py：检索 + 只收已验证事实；接一个领域源做端到端",
+        "passed": ok,
+        "evidence": f"跨领域演示：{len(latest.get('domains', []))} 个领域，"
+                    f"每领域命中={[v['count'] for v in latest.get('per_domain', {}).values()]}",
+        "next": "两个领域各检索到事实，且换领域不改代码",
     }
 
 
