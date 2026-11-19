@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 
 from sa2.core import gate                         # noqa: E402
 from sa2.core.gate import Declaration             # noqa: E402
-from sa2.core.judge import Judge, replace         # noqa: E402
+from sa2.core.judge import Criterion, Judge, replace  # noqa: E402
 from sa2.core.ledger import Ledger                # noqa: E402
 from sa2.forge import criteria as fc              # noqa: E402
 from sa2.forge import dims as fd                  # noqa: E402
@@ -254,6 +254,11 @@ def main() -> int:
                 return 1
             delivery_specs = fc.tested_set(cands) if len(cands) > 1 else [fc.tested(cands[0])]
 
+    # 时效判据不许由模型生成、必须每一轮都挂：它判的是「文本里的日期与今天的关系」，
+    # 与任务内容无关，也不需要外部能力。领导那句「不能拿老数据给我结果」的机检就是它。
+    delivery_specs.append(Criterion(name="交付·时效", kind="callable",
+                                    spec={"target": "sa2.core.freshness:stale_problems"},
+                                    dims=(), self_tested=True, scope="delivery"))
     _register(judge, delivery_specs)
     if not args.fresh and not args.auto_stages and delivery_specs:
         registry.remember_goal(goal, [c.name for c in delivery_specs])
