@@ -69,7 +69,7 @@ class SizeTest(unittest.TestCase):
         self.assertEqual(decision.scale, "single")
         calls = []
 
-        def produce(role, stage, upstream, attempt, feedback=""):
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
             calls.append(stage)
             return f"{S1}\n{S2}\n"
 
@@ -191,7 +191,7 @@ class CaseConsumerTest(unittest.TestCase):
                                                              ("correctness",))), proposer="leader")
             seen = []
 
-            def produce(role, stage, upstream, attempt, feedback=""):
+            def produce(role, stage, upstream, attempt, feedback="", requirements=""):
                 seen.append((stage, attempt, feedback))
                 if role.kind != "executor":
                     return ""

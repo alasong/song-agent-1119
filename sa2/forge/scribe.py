@@ -27,16 +27,18 @@ class Scribe:
     upstream_chars: int = 1200
     calls: int = 0
 
-    def __call__(self, role, stage, upstream: str, attempt: int, feedback: str = "") -> str:
+    def __call__(self, role, stage, upstream: str, attempt: int, feedback: str = "",
+                requirements: str = "") -> str:
         if role.kind == "verifier":
             return ""
         self.calls += 1
-        text = self.llm([{"role": "user", "content": self.prompt(role, stage, upstream,
-                                                                attempt, feedback)}],
+        text = self.llm([{"role": "user", "content": self.prompt(role, stage, upstream, attempt,
+                                                                feedback, requirements)}],
                         self.max_tokens)
         return text or ""
 
-    def prompt(self, role, stage: str, upstream: str, attempt: int, feedback: str = "") -> str:
+    def prompt(self, role, stage: str, upstream: str, attempt: int, feedback: str = "",
+               requirements: str = "") -> str:
         upstream_body = (upstream or "").strip()[: self.upstream_chars] or "（无，你是第一个）"
         lines = []
         if self.spec.strip():
@@ -46,6 +48,8 @@ class Scribe:
             f"## 当前阶段\n{stage}\n" + (FIRST if attempt <= 1 else RETRY.format(attempt=attempt)),
             f"## 上游交付\n```\n{upstream_body}\n```",
         ]
+        if requirements.strip():
+            lines.append(f"## 本阶段的验收要求（逐条满足，判据按它判）\n{requirements.strip()}")
         if feedback.strip():
             lines.append(f"## 上次被拒的原因（重做时必须逐条修掉）\n{feedback.strip()}")
         lines.append("只写这一阶段的交付物本身，不要解释你在做什么，不要复述要求。")

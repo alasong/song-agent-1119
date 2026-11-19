@@ -41,18 +41,22 @@ class Criterion:
     dims: tuple[str, ...] = ()
     self_tested: bool = False
     version: int = 1
+    # scope=stage 的判据只判「这一阶段的产出」，delivery 的判据判「整篇能不能交」。
+    # 没有这个区分，中间阶段会被迫长成完整文档才算过——分层就是假的。
+    scope: str = "delivery"
 
     def as_dict(self) -> dict:
         return {"name": self.name, "kind": self.kind, "spec": self.spec,
                 "dims": list(self.dims), "self_tested": self.self_tested,
-                "version": self.version}
+                "version": self.version, "scope": self.scope}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Criterion":
         return cls(name=data["name"], kind=data["kind"], spec=data.get("spec") or {},
                    dims=tuple(data.get("dims") or ()),
                    self_tested=bool(data.get("self_tested")),
-                   version=int(data.get("version") or 1))
+                   version=int(data.get("version") or 1),
+                   scope=data.get("scope") or "delivery")
 
 
 @dataclass(frozen=True)

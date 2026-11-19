@@ -51,7 +51,7 @@ class LoopTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _produce(self, fail_first_on=None):
-        def produce(role, stage, upstream, attempt, feedback=""):
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
             self.calls.append((role.name, stage, attempt))
             if role.kind != "executor":
                 return ""
@@ -93,7 +93,7 @@ class LoopTest(unittest.TestCase):
         self.assertTrue(report["passed"])
 
     def test_persistent_rejection_stops_and_names_the_stage(self):
-        def produce(role, stage, upstream, attempt, feedback=""):
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
             self.calls.append((role.name, stage, attempt))
             if role.kind != "executor":
                 return ""
@@ -111,7 +111,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_budget_stops_before_next_dispatch(self):
-        def produce(role, stage, upstream, attempt, feedback=""):
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
             self.calls.append((role.name, stage, attempt))
             return "x" * 400            # ≈100 tokens/次
 
@@ -143,7 +143,7 @@ class LoopTest(unittest.TestCase):
         """重做必须知道上次错在哪，否则省下的整篇钱又亏回去。"""
         seen = []
 
-        def produce(role, stage, upstream, attempt, feedback=""):
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
             seen.append((stage, attempt, feedback))
             if role.kind != "executor":
                 return ""

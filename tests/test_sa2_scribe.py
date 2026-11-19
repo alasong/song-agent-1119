@@ -61,6 +61,15 @@ class ScribeTest(unittest.TestCase):
         llm = FakeLLM(text=None)
         self.assertEqual(Scribe(llm)(role(), "起草", "", 1), "")
 
+    def test_stage_requirements_are_visible_to_the_producer(self):
+        """判据对生成方必须可见：看不见要求只能猜，猜不中就红两次。"""
+        prompt = Scribe(FakeLLM()).prompt(role(), "成稿", "", 1, "",
+                                          "必须包含：## 三、止损\n必须出现：止损线")
+        self.assertIn("本阶段的验收要求", prompt)
+        self.assertIn("## 三、止损", prompt)
+        self.assertIn("止损线", prompt)
+
+
 
 if __name__ == "__main__":
     unittest.main()

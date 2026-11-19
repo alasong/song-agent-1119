@@ -65,6 +65,9 @@ class PDCA:
         dispatches = 0
 
         for stage in self.plan.stages:
+            # 判据对生成方必须是可见的：看不见要求，只能猜，猜不中就红两次。
+            # 可见 ≠ 可控：生成方知道要求是什么，但改不了判据本身。
+            requirements = self._requirements(stage)
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
                 parts: list[str] = []
@@ -75,14 +78,18 @@ class PDCA:
                                             redone=redone, rejects=rejects,
                                             dispatches=dispatches, budget=budget)
                     role = self.plan.role(role_name)
-                    out = self.produce(role, stage.name, text, attempt, feedback)
+                    out = self.produce(role, stage.name, text, attempt, feedback, requirements)
                     budget.note(out)
                     dispatches += 1
                     self.ledger.append("dispatch", role_name,
                                        {"stage": stage.name, "attempt": attempt, "chars": len(out)})
                     parts.append(out)
 
-                candidate = "\n\n".join(p for p in parts if p and p.strip())
+                assembled = "\n\n".join(p for p in parts if p and p.strip())
+                if stage.mode == "append" and text.strip():
+                    candidate = text.rstrip() + "\n\n" + assembled
+                else:
+                    candidate = assembled
                 problems: list[str] = []
                 for name in stage.gate_criteria:
                     verdict = self.judge.run(name, candidate)
@@ -129,6 +136,18 @@ class PDCA:
                             redone=redone, rejects=rejects, dispatches=dispatches,
                             budget=budget, problems=problems, evidence=evidence,
                             chars=len(text), ran=sorted(ran), text=text)
+
+    def _requirements(self, stage) -> str:
+        lines: list[str] = []
+        for name in stage.gate_criteria:
+            crit = self.judge.get(name)
+            if crit is None:
+                continue
+            if crit.kind == "sections":
+                lines.extend(f"必须包含：{h}" for h in (crit.spec.get("required") or []))
+            elif crit.kind == "regex" and crit.spec.get("literal"):
+                lines.append("必须出现：" + "、".join(str(x) for x in (crit.spec.get("patterns") or [])))
+        return "\n".join(lines)
 
     def _feedback(self, raw: str) -> str:
         """把历史案例并进重做提示：没有这一句，案例库就只是写不读的死功能。"""

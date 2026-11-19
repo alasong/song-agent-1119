@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 KINDS = {"planner", "researcher", "expert", "executor", "verifier", "curator"}
 
@@ -32,6 +32,10 @@ class Stage:
     output: str
     roles: tuple[str, ...]
     gate_criteria: tuple[str, ...]
+    # replace：本阶段产出就是全文（重写）
+    # append ：上游全文 + 本阶段产出（装配/定稿）
+    # 没有这个区分，最后一道「定稿」阶段会把前面的正文整个丢掉。
+    mode: str = "replace"
 
 
 @dataclass(frozen=True)
@@ -55,7 +59,7 @@ class OrgPlan:
 
 
 def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
-               available_criteria=None) -> OrgPlan:
+               available_criteria=None, require_gates: bool = True) -> OrgPlan:
     match = re.search(r"\{.*\}", raw or "", re.S)
     if not match:
         raise OrgError("模型输出里没有 JSON")
@@ -109,9 +113,12 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
         unknown = [n for n in names if n not in seen]
         if unknown:
             raise OrgError(f"阶段 {name} 引用了不存在的角色：{unknown}")
-        if not gates:
+        if not gates and require_gates:
             raise OrgError(f"阶段 {name} 没有阶段门：过不过谁说了算")
-        stages.append(Stage(name, output, names, gates))
+        mode = str(item.get("mode", "replace")).strip()
+        if mode not in ("replace", "append"):
+            raise OrgError(f"阶段 {name} 的 mode={mode!r} 只能是 replace / append")
+        stages.append(Stage(name, output, names, gates, mode))
 
     if available_criteria is not None:
         known = set(available_criteria)
@@ -153,7 +160,8 @@ def _org_prompt(goal: str, budget_cap: int, criteria) -> str:
   "stages":[{{"name":"","output":"","roles":[""],"gate_criteria":[""]}}]}}"""
 
 
-def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2) -> OrgPlan:
+def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2,
+             require_gates: bool = True) -> OrgPlan:
     """生成编制。被自己的校验拒了就带着拒收原因重来一次——
     不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。"""
     prompt = _org_prompt(goal, budget_cap, criteria)
@@ -164,8 +172,45 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: i
             f"{prompt}\n\n上次这份编制被拒，原因：{feedback}\n请修正后重新输出完整 JSON。")
         try:
             return parse_plan(goal, llm([{"role": "user", "content": ask}]), budget_cap,
-                              available_criteria=criteria)
+                              available_criteria=criteria, require_gates=require_gates)
         except OrgError as exc:
             last = exc
             feedback = str(exc)
     raise last if last else OrgError("编制生成失败")
+
+
+def attach_stage_gates(plan: OrgPlan, gates: dict[str, tuple[str, ...]]) -> OrgPlan:
+    """把每个阶段的阶段门换成它自己的判据。
+
+    为什么必须换：如果所有阶段都拿「整篇交付」的判据当门，中间阶段就被迫写成完整文档，
+    分层等于没有。阶段判据是 stage 作用域的，交付判据是 delivery 作用域的。
+    """
+    missing = [st.name for st in plan.stages if st.name not in gates]
+    if missing:
+        raise OrgError(f"这些阶段没有给阶段门：{missing}")
+    stages = tuple(replace(st, gate_criteria=tuple(gates[st.name])) for st in plan.stages)
+    return replace(plan, stages=stages)
+
+
+def close_with_delivery(plan: OrgPlan, criteria) -> OrgPlan:
+    """最后一道阶段门必须包含交付门。
+
+    否则会出现一种很难查的红：中间阶段全过、最后阶段按自己的判据也过了，
+    但整篇不满足交付判据——因为那段要求从来没进过任何人的提示词。
+    交付要求必须在最后一个阶段的可见范围里，才可能被写出来。
+    """
+    criteria = tuple(str(c) for c in criteria)
+    if not plan.stages:
+        raise OrgError("编制没有阶段")
+    stages = list(plan.stages)
+    targets = [len(stages) - 1]
+    # 装配阶段只是把上游接起来；真正写正文的是它前面最后一个 replace 阶段。
+    # 交付要求必须同时进那个阶段的可见范围，否则写正文的人从头到尾都不知道交付结构。
+    if stages[-1].mode == "append":
+        writers = [i for i, st in enumerate(stages) if st.mode == "replace"]
+        if writers:
+            targets.append(writers[-1])
+    for i in targets:
+        merged = tuple(dict.fromkeys(tuple(stages[i].gate_criteria) + criteria))
+        stages[i] = replace(stages[i], gate_criteria=merged)
+    return replace(plan, stages=tuple(stages))
