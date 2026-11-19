@@ -1,0 +1,25 @@
+{
+  "ts": "2026-11-19T18:54:44",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 1,
+  "dispatches": 6,
+  "handoffs": 6,
+  "reworks": 1,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "verdicts": 1,
+  "verdict_pass": 0,
+  "verdict_reject": 1,
+  "sample_artifact": "**装配层契约裁决（返工）**\n\n1. **接口契约**：`Assembler.assemble(parts: Part[]) -> Assembly`，前置条件 parts 非空且 id 唯一；违反抛 `ContractViolation",
+  "distinct_role_names": [
+    "代码与资产整理员",
+    "回归用例设计者",
+    "接口契约研究员",
+    "独立验证员",
+    "装配实现工程师",
+    "装配领域专家"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "ts": "2026-11-19T18:54:52",
+  "kind": "rag",
+  "facts_offered": 3,
+  "green_at_round": 1,
+  "final_rc": 0,
+  "refs": 3,
+  "missing_refs": [],
+  "chars": 985,
+  "passed": true,
+  "target": "/Users/song/xm-runs/rag/20261119-185447/summary.md"
+}

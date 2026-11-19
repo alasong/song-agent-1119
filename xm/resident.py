@@ -23,6 +23,7 @@ class ResidentConfig:
     max_ticks: int | None = None
     checkpoint: Path | None = None
     already_elapsed_h: float = 0.0
+    already_slept_h: float = 0.0
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Resident:
 
     def __post_init__(self):
         self.session_start = time.time()
+        self.session_mono = time.monotonic()
 
     def tick(self) -> dict:
         name, task = self.policy(self.state)
@@ -60,10 +62,15 @@ class Resident:
         if not self.cfg.checkpoint:
             return
         self.cfg.checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        # 运行时长用单调时钟：睡眠期间 monotonic 不走，不会被算成“在跑”
         running_h = round(self.cfg.already_elapsed_h
-                          + (time.time() - self.session_start) / 3600, 4)
+                          + (time.monotonic() - self.session_mono) / 3600, 4)
+        wall_h = round((time.time() - self.session_start) / 3600, 4)
+        slept_h = round(self.cfg.already_slept_h + max(0.0, wall_h - running_h
+                                                       + self.cfg.already_elapsed_h), 4)
         self.cfg.checkpoint.write_text(json.dumps({
             "running_hours": running_h,
+            "slept_hours": slept_h,
             "ticks": len(self.history),
             "progress_tasks": self.state.get("progress_tasks", 0),
             "last": self.history[-1] if self.history else None,
@@ -82,9 +89,12 @@ class Resident:
             if time.time() + self.cfg.interval_s > deadline:
                 break
             time.sleep(self.cfg.interval_s)
-        elapsed_hours = round(self.cfg.already_elapsed_h + (time.time() - started) / 3600, 4)
+        elapsed_hours = round(self.cfg.already_elapsed_h
+                              + (time.monotonic() - self.session_mono) / 3600, 4)
+        slept_hours = round(self.cfg.already_slept_h, 4)
         return {
             "hours": elapsed_hours,
+            "slept_hours": slept_hours,
             "ticks": ticks,
             "progress_tasks": self.state.get("progress_tasks", 0),
             "distinct_tasks": len(set(self.state.get("done", []))),

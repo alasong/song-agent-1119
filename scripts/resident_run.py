@@ -78,9 +78,12 @@ def main() -> int:
     checkpoint = out_dir / "checkpoint.json"
 
     already = 0.0
+    slept = 0.0
     if args.resume:
         if checkpoint.exists():
-            already = float(json.loads(checkpoint.read_text(encoding="utf-8")).get("running_hours") or 0)
+            data = json.loads(checkpoint.read_text(encoding="utf-8"))
+            already = float(data.get("running_hours") or 0)
+            slept = float(data.get("slept_hours") or 0)
         if already == 0.0:
             # 回退：从历史账本的时间跨度推算已跑时长（老检查点没有该字段）
             spans = []
@@ -91,11 +94,12 @@ def main() -> int:
             if spans:
                 started = min(s for s, _ in spans)
                 already = round((time.time() - started) / 3600, 4)
-        print(json.dumps({"resume_from_hours": already}, ensure_ascii=False))
+        print(json.dumps({"resume_from_hours": already, "slept_hours": slept}, ensure_ascii=False))
 
     resident = Resident(ledger, make_policy(),
                         ResidentConfig(interval_s=args.interval, max_hours=args.hours,
-                                       checkpoint=checkpoint, already_elapsed_h=already))
+                                       checkpoint=checkpoint, already_elapsed_h=already,
+                                       already_slept_h=slept))
     summary = resident.run()
 
     report = {
@@ -104,6 +108,7 @@ def main() -> int:
         "interval_s": args.interval,
         "max_hours": args.hours,
         "hours": summary["hours"],
+        "slept_hours": summary.get("slept_hours", 0.0),
         "ticks": summary["ticks"],
         "progress_tasks": summary["progress_tasks"],
         "distinct_tasks": summary["distinct_tasks"],

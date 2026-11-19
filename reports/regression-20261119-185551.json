@@ -1,0 +1,31 @@
+{
+  "ts": "2026-11-19T18:55:51",
+  "passed": 5,
+  "total": 6,
+  "results": {
+    "G3": {
+      "passed": true,
+      "evidence": "判据运行时与 daemon 通电测试"
+    },
+    "G6": {
+      "passed": true,
+      "evidence": "预算止损与真实 usage 测试"
+    },
+    "G2": {
+      "passed": true,
+      "evidence": "roles=6 handoffs=6 chain_ok=True verdicts=1 reworks=1"
+    },
+    "G4": {
+      "passed": true,
+      "evidence": "抓取 passed=True；RAG refs=3 passed=True"
+    },
+    "G5": {
+      "passed": true,
+      "evidence": "n=3 score=1.0"
+    },
+    "G1": {
+      "passed": false,
+      "evidence": "24h 常驻运行进行中，未完成"
+    }
+  }
+}
