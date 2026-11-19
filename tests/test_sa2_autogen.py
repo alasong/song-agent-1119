@@ -67,6 +67,74 @@ class ProposeSpecTest(unittest.TestCase):
         self.assertEqual(crit.spec["patterns"], ["来源标注", "分类标签"])
 
 
+    def test_out_of_slice_sections_are_trimmed_not_kept(self):
+        """模型爱把整篇都写出来：结构由系统裁，不靠它自觉。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            judge = Judge(authority=("leader",))
+            judge.register(fc.tested(fc.propose_sections("第一片", [S1], ("correctness",))),
+                           proposer="leader")
+            judge.register(fc.tested(fc.propose_sections("第二片", [S2, S3], ("correctness",))),
+                           proposer="leader")
+            plan = fo.parse_plan("目标", json.dumps({
+                "roles": [
+                    {"name": "执行", "kind": "executor", "duty": "写", "criteria": "齐", "budget": 5},
+                    {"name": "验证", "kind": "verifier", "duty": "判", "criteria": "准", "budget": 5},
+                    {"name": "规划", "kind": "planner", "duty": "拆", "criteria": "清", "budget": 5},
+                ],
+                "stages": [
+                    {"name": "一段", "output": "a", "roles": ["规划", "执行"],
+                     "gate_criteria": ["第一片"]},
+                    {"name": "二段", "output": "b", "roles": ["执行", "验证"],
+                     "gate_criteria": ["第二片"], "mode": "append"},
+                ],
+            }, ensure_ascii=False))
+
+            def produce(role, stage, upstream, attempt, feedback="", requirements=""):
+                if role.kind != "executor":
+                    return ""
+                # 故意写整篇：一段二段三段全写
+                return f"{S1}\n甲\n{S2}\n乙\n{S3}\n丙\n"
+
+            pdca = PDCA(judge, Ledger(root / "l.jsonl"), plan, produce,
+                        {"correctness": "正确性"})
+            report = pdca.run(Declaration(goal="t", dims=("correctness",),
+                                          criteria=("第一片", "第二片"), budget_tokens=100_000))
+            self.assertTrue(report["passed"], report)
+            self.assertEqual(report["text"].count(S1), 1)
+            self.assertEqual(report["text"].count(S2), 1)
+            self.assertEqual(report["text"].count(S3), 1)
+
+
+class SliceTest(unittest.TestCase):
+    def test_slices_cover_every_heading_exactly_once(self):
+        heads = [f"## 第{i}节" for i in range(1, 8)]
+        chunks = fc.plan_slices(heads, 3)
+        flat = [h for chunk in chunks for h in chunk]
+        self.assertEqual(sorted(flat), sorted(heads))
+        self.assertEqual(len(flat), len(set(flat)), "切片之间不许重叠")
+
+    def test_slice_sample_keeps_only_its_own_sections(self):
+        sample = "## 一、a\nA\n## 二、b\nB\n## 三、c\nC\n"
+        piece = fc.slice_sample(sample, ["## 二、b"])
+        self.assertIn("## 二、b", piece)
+        self.assertNotIn("## 一、a", piece)
+        self.assertNotIn("## 三、c", piece)
+
+    def test_checker_rejects_duplicated_sections(self):
+        """重复章节必须判红：这是「合规的绿、不是好文档的绿」那个缺陷的守门人。"""
+        sample = "## 一、a\n" + "正文" * 20 + "\n## 二、b\n" + "正文" * 20
+        with tempfile.TemporaryDirectory() as tmp:
+            _, crit = ft.checker_from_sections(sample, tmp, name="dup")
+            judge = Judge(authority=("leader",))
+            judge.register(crit, proposer="leader")
+            once = "## 一、a\n" + "正文" * 20 + "\n## 二、b\n" + "正文" * 20
+            twice = once + "\n" + once
+            self.assertTrue(judge.run(crit.name, once).ok)
+            verdict = judge.run(crit.name, twice)
+            self.assertFalse(verdict.ok)
+            self.assertTrue(any("重复" in p for p in verdict.problems), verdict.problems)
+
 
 class StageScopeTest(unittest.TestCase):
     ORG = json.dumps({

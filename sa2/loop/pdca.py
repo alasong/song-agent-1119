@@ -86,6 +86,7 @@ class PDCA:
             # 判据对生成方必须是可见的：看不见要求，只能猜，猜不中就红两次。
             # 可见 ≠ 可控：生成方知道要求是什么，但改不了判据本身。
             requirements = self._requirements(stage)
+            writer = self._writer(stage)
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
                 parts: list[str] = []
@@ -99,8 +100,9 @@ class PDCA:
                                             redone=redone, rejects=rejects,
                                             dispatches=dispatches, budget=budget)
                     with ThreadPoolExecutor(max_workers=len(roles)) as pool:
-                        futures = [(role, pool.submit(self.produce, role, stage.name, text,
-                                                      attempt, feedback, requirements))
+                        futures = [(role, pool.submit(
+                            self.produce, role, stage.name, text, attempt, feedback,
+                            requirements if role.name == writer else self._supplement(writer)))
                                    for role in roles]
                         for role, future in futures:
                             out = future.result()
@@ -117,7 +119,8 @@ class PDCA:
                             return self._report(False, budget.why(f"{stage.name}·{role.name} 之前"),
                                                 redone=redone, rejects=rejects,
                                                 dispatches=dispatches, budget=budget)
-                        out = self.produce(role, stage.name, text, attempt, feedback, requirements)
+                        out = self.produce(role, stage.name, text, attempt, feedback,
+                                       requirements if role.name == writer else self._supplement(writer))
                         budget.note(out)
                         dispatches += 1
                         self.ledger.append("dispatch", role.name,
@@ -125,6 +128,11 @@ class PDCA:
                         parts.append(out)
 
                 assembled = "\n\n".join(p for p in parts if p and p.strip())
+                # 结构由系统保证，不靠模型自觉：本阶段只准留自己那几节，越界部分裁掉。
+                # 实测模型即使被要求「只写这一片」，也会把整篇写出来——五轮同向失败。
+                allowed = self._allowed(stage)
+                if allowed:
+                    assembled = self._trim(assembled, allowed)
                 if stage.mode == "append" and text.strip():
                     candidate = text.rstrip() + "\n\n" + assembled
                 else:
@@ -185,6 +193,45 @@ class PDCA:
                             redone=redone, rejects=rejects, dispatches=dispatches,
                             budget=budget, problems=problems, evidence=evidence,
                             chars=len(text), ran=sorted(ran), text=text)
+
+    def _writer(self, stage) -> str:
+        """本阶段谁执笔写标题：优先 executor，没有就第一个角色。
+
+        为什么要有：同一片被三个角色各写一遍，append 之后标题就重复三次——
+        实测出现过「## 三 出现 3 次」。
+        """
+        executors = [n for n in stage.roles if self.plan.role(n).kind == "executor"]
+        return (executors or list(stage.roles) or [""])[0]
+
+    @staticmethod
+    def _supplement(writer: str) -> str:
+        return (f"（本阶段的标题由「{writer}」执笔；你只提供素材、判断或校验意见，"
+                f"不要写 ## 标题，也不要把别人的章节再抄一遍。）")
+
+    def _allowed(self, stage) -> set[str]:
+        allowed: set[str] = set()
+        for name in stage.gate_criteria:
+            crit = self.judge.get(name)
+            if crit is not None and crit.kind == "sections":
+                allowed |= {str(h) for h in (crit.spec.get("required") or [])}
+        return allowed
+
+    @staticmethod
+    def _trim(text: str, allowed: set[str]) -> str:
+        keep: list[str] = []
+        inside = False
+        seen: set[str] = set()
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                if stripped in allowed and stripped not in seen:
+                    seen.add(stripped)
+                    inside = True
+                else:
+                    inside = False
+            if inside:
+                keep.append(line)
+        return "\n".join(keep).strip()
 
     def _requirements(self, stage) -> str:
         lines: list[str] = []

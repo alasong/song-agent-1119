@@ -153,50 +153,54 @@ def main() -> int:
                 notes["reused_from_registry"] = f"{len(delivery_specs)} 条判据（版本 " \
                     + "、".join(str(c.version) for c in delivery_specs) + "）"
 
-    # ③ 造阶段判据；交付判据 = 最后一个「写正文」阶段的判据的 delivery 副本（同源）
+    # ③ 造判据：一份交付样例定义结构，各阶段只负责自己的切片（切片互不重叠 → 不重复）
     stage_specs: dict[str, list] = {}
     gates: dict[str, tuple[str, ...]] = {}
     if args.auto_stages:
-        for stage in plan.stages:
-            made = fc.propose_spec(goal, llm,
-                                   context=f"当前阶段：{stage.name}\n本阶段要交的东西：{stage.output}")
-            (run_dir / f"stage-spec-{stage.name}.md").write_text(made["raw"], encoding="utf-8")
-            sample = (made.get("sample") or "").strip()
-            heads = ft.headings_of(sample)
-            specs = []
-            if heads:
-                # 判据从**样例**派生：标题 + 每节正文下限。不再用「必须出现某词」——
-                # 实测模型会换成同义表述，字面关键词必然判红。
-                specs.append(fc.tested(fc.replace(
-                    fc.propose_sections(f"{stage.name}·章节", heads, dims), scope="stage")))
-                try:
-                    _, tool = ft.checker_from_sections(
-                        sample, run_dir / "tools", name=f"stage-{stage.name}-sections")
-                    specs.append(fc.replace(tool, name=f"{stage.name}·正文下限", scope="stage"))
-                except ValueError as exc:
-                    notes[f"checker_fallback:{stage.name}"] = str(exc)
-            else:
-                notes[f"stage_sample_missing:{stage.name}"] = "样例里没有 ## 标题，判据无法派生"
-            stage_specs[stage.name] = specs
-            gates[stage.name] = tuple(_register(judge, specs)) if specs else ()
-
-        empty = [st.name for st in plan.stages if not stage_specs.get(st.name)]
-        if empty:
-            # 静默给它塞交付判据 = 又回到「假分层」：中间阶段被迫交完整文档。
-            # 判据造不出来就不开工，比跑一遍注定红的环便宜。
-            print(f"这些阶段没有可用判据：{empty}；判据不可满足或自测未过，先停机。",
-                  file=sys.stderr)
+        made = fc.propose_spec(goal, llm, context=("可参考的任务约束：\n" + hand_spec
+                                                  if args.spec_file else ""))
+        (run_dir / "proposed_spec.md").write_text(made["raw"], encoding="utf-8")
+        sample = (made.get("sample") or "").strip()
+        heads = ft.headings_of(sample)
+        if not heads:
+            print("交付样例里没有 `## ` 标题，无法切分阶段结构，先停机。", file=sys.stderr)
             (run_dir / "readings.json").write_text(json.dumps(
-                {"passed": False, "reason": f"阶段判据缺失：{empty}", "notes": notes},
+                {"passed": False, "reason": "交付样例无标题", "notes": notes},
                 ensure_ascii=False, indent=2), encoding="utf-8")
             return 1
 
+        delivery_specs = [fc.tested(fc.propose_sections("交付·章节", heads, dims))]
+        try:
+            _, full_tool = ft.checker_from_sections(sample, run_dir / "tools",
+                                                    name="delivery-sections",
+                                                    allow_foreign=False)
+            delivery_specs.append(fc.replace(full_tool, name="交付·正文下限", scope="delivery"))
+        except ValueError as exc:
+            notes["delivery_checker_fallback"] = str(exc)
+
         writers = [st for st in plan.stages if st.mode == "replace"] or list(plan.stages)
-        writer = writers[-1]
-        delivery_specs = [replace(c, name=f"交付·{c.name}", scope="delivery")
-                          for c in stage_specs.get(writer.name, [])]
-        if not delivery_specs:
-            notes["delivery_source"] = f"写正文阶段「{writer.name}」没有判据，退回人工规格"
+        chunks = fc.plan_slices(heads, len(writers))
+        if len(chunks) != len(writers):
+            notes["slice_mismatch"] = f"{len(heads)} 个标题 / {len(writers)} 个阶段"
+        for order, (stage, chunk) in enumerate(zip(writers, chunks)):
+            piece = fc.slice_sample(sample, chunk)
+            specs = [fc.tested(fc.replace(
+                fc.propose_sections(f"{stage.name}·章节", chunk, dims), scope="stage"))]
+            try:
+                _, tool = ft.checker_from_sections(
+                    piece, run_dir / "tools", name=f"stage-{stage.name}-sections",
+                    # 第一个阶段从零写，越界就是错；后面的阶段是追加，上游章节合法。
+                    allow_foreign=(order > 0))
+                specs.append(fc.replace(tool, name=f"{stage.name}·正文下限", scope="stage"))
+            except ValueError as exc:
+                notes[f"checker_fallback:{stage.name}"] = str(exc)
+            stage_specs[stage.name] = specs
+            gates[stage.name] = tuple(_register(judge, specs))
+            (run_dir / f"slice-{stage.name}.md").write_text(piece, encoding="utf-8")
+        for stage in plan.stages:
+            if stage.name not in stage_specs:
+                stage_specs[stage.name] = list(delivery_specs)
+                gates[stage.name] = ()
     elif not reused:
         delivery_specs = []
         if args.auto_criteria:
@@ -232,11 +236,12 @@ def main() -> int:
     if args.auto_stages:
         plan = fo.attach_stage_gates(plan, {st.name: gates.get(st.name) or tuple(decl.criteria)
                                             for st in plan.stages})
+        # 切片模式：第一个阶段是 replace（它就是第一篇），后面全部 append（各自追加自己那片）。
+        # 每个标题只由一个人写一次，所以装配后不会重复——这正是上一版 26 个标题的根因。
         stages = list(plan.stages)
-        if len(stages) > 1:
-            stages[-1] = replace(stages[-1], mode="append")
+        for i in range(1, len(stages)):
+            stages[i] = replace(stages[i], mode="append")
         plan = replace(plan, stages=tuple(stages))
-        plan = fo.close_with_delivery(plan, decl.criteria)
     elif plan is None:
         if args.auto_org:
             try:
@@ -270,7 +275,9 @@ def main() -> int:
 
     # ⑥ 跑环（带断点）
     state_path = Path(args.resume) if args.resume else run_dir / "state.json"
-    scribe = Scribe(llm, spec=spec, max_tokens=args.max_tokens)
+    # 切片模式下不能再把整份任务规格塞给执笔角色：它一看见六节就会把整篇写出来，
+    # 阶段门随即判它越界。每个阶段的「验收要求」已经写明它只该写哪几节。
+    scribe = Scribe(llm, spec=("" if args.auto_stages else spec), max_tokens=args.max_tokens)
     pdca = PDCA(judge, ledger, plan, scribe, fd.VOCAB, usage=usage,
                 max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),

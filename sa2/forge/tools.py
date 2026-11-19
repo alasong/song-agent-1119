@@ -117,6 +117,7 @@ def generate_checker(goal: str, required, llm, out_dir: str | Path,
 CHECKER_TEMPLATE = '''import sys
 HEADINGS = __HEADINGS__
 MIN = __MIN__
+problems = []
 text = open(sys.argv[1], encoding="utf-8").read()
 fence = False
 bodies = {}
@@ -135,6 +136,20 @@ for line in text.splitlines():
     if current is not None:
         bodies[current].append(line)
 problems = []
+seen = {}
+for line in text.splitlines():
+    s2 = line.strip()
+    if not s2.startswith("## ") or fence:
+        continue
+    if s2 in HEADINGS:
+        seen[s2] = seen.get(s2, 0) + 1
+    elif __ALLOW_FOREIGN__:
+        continue          # 追加阶段：上游的合法章节不算越界
+    else:
+        problems.append("越界章节：" + s2 + "（本阶段只该写 " + " / ".join(HEADINGS) + "）")
+for h, times in seen.items():
+    if times > 1:
+        problems.append("章节重复：" + h + " 出现 " + str(times) + " 次")
 for h in HEADINGS:
     body = "".join(bodies.get(h, []))
     n = len([c for c in body if not c.isspace()])
@@ -171,7 +186,8 @@ def _bodies(sample: str) -> list[int]:
 
 
 def checker_from_sections(sample: str, out_dir: str | Path, name: str = "sections_checker",
-                          min_chars: int | None = None) -> tuple[Path, Criterion]:
+                          min_chars: int | None = None,
+                          allow_foreign: bool = False) -> tuple[Path, Criterion]:
     """从模型的合格样例**确定性**生成检查器：标题齐全 + 每节正文不少于下限。
 
     为什么不用模型写检查器：一是每阶段一次太贵，二是实测模型写的检查器常常过严
@@ -186,7 +202,9 @@ def checker_from_sections(sample: str, out_dir: str | Path, name: str = "section
         # 取样例里最短一节的六成做下限：样例必然过，同时又逼着真交付写出实质正文
         min_chars = max(10, int(min(sizes) * 0.6)) if sizes else 10
 
-    code = CHECKER_TEMPLATE.replace("__HEADINGS__", repr(heads)).replace("__MIN__", str(min_chars))
+    code = (CHECKER_TEMPLATE.replace("__HEADINGS__", repr(heads))
+            .replace("__MIN__", str(min_chars))
+            .replace("__ALLOW_FOREIGN__", "True" if allow_foreign else "False"))
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"{name}.py"
@@ -196,6 +214,10 @@ def checker_from_sections(sample: str, out_dir: str | Path, name: str = "section
              ("缺章节", "\n".join(line for line in sample.splitlines()
                                   if line.strip() != heads[-1]), False),
              ("冒充件", "```\n" + "\n".join(heads) + "\n```\n" + "正文" * 200, False)]
+    if not allow_foreign:
+        # 只有「从零写」的阶段才该拒越界；追加阶段的上游章节是合法的，
+        # 拿越界案去测它必然误判，进而把一个好检查器退回成纯章节判据。
+        cases.append(("越界章节", sample + "\n## 九、不该出现的章节\n" + "正文" * 20, False))
     fails: list[str] = []
     for label, text, expect_ok in cases:
         rc, detail = _run(path, text, 10)

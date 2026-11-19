@@ -249,3 +249,34 @@ def tested(crit: Criterion) -> Criterion:
     if not ok:
         raise ValueError(f"判据 {crit.name!r} 自测未过：{'；'.join(fails)}")
     return replace(crit, self_tested=True)
+
+def plan_slices(headings, stages: int) -> list[list[str]]:
+    """把交付结构切给各阶段。
+
+    为什么必须切：每个阶段都写整篇，装配时就会首尾相叠——实测交付里 `## ` 出现 26 次。
+    切开之后每个标题只由一个人写一次，append 装配自然不重复。
+    """
+    heads = [str(h) for h in headings]
+    if stages <= 0 or not heads:
+        return []
+    size, extra = divmod(len(heads), stages)
+    out, cursor = [], 0
+    for i in range(stages):
+        take = size + (1 if i < extra else 0)
+        out.append(heads[cursor:cursor + take])
+        cursor += take
+    return [chunk for chunk in out if chunk]
+
+
+def slice_sample(sample: str, headings) -> str:
+    """从完整样例里只取指定标题那几段（含标题行）。"""
+    wanted = set(str(h) for h in headings)
+    keep: list[str] = []
+    current = None
+    for line in (sample or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            current = stripped if stripped in wanted else None
+        if current is not None:
+            keep.append(line)
+    return "\n".join(keep).strip()

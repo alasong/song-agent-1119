@@ -259,5 +259,42 @@ class TickLoopTest(unittest.TestCase):
             self.assertEqual(sleeps, [], "interval=0 不该睡")
 
 
+class WriterRuleTest(unittest.TestCase):
+    def test_only_one_role_per_stage_writes_headings(self):
+        """同阶段三个角色各写一遍 → 标题重复三次。只让执笔角色看到标题要求。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            judge = Judge(authority=("leader",))
+            judge.register(fc.tested(fc.propose_sections("一段", [S1], ("correctness",))),
+                           proposer="leader")
+            plan = fo.parse_plan("目标", json.dumps({
+                "roles": [
+                    {"name": "专家", "kind": "expert", "duty": "分析", "criteria": "有据", "budget": 5},
+                    {"name": "执行", "kind": "executor", "duty": "写", "criteria": "齐", "budget": 5},
+                    {"name": "验证", "kind": "verifier", "duty": "判", "criteria": "准", "budget": 5},
+                    {"name": "规划", "kind": "planner", "duty": "拆", "criteria": "清", "budget": 5},
+                ],
+                "stages": [
+                    {"name": "起草", "output": "草稿", "roles": ["规划", "执行"],
+                     "gate_criteria": ["一段"]},
+                    {"name": "成稿", "output": "成稿", "roles": ["专家", "执行", "验证"],
+                     "gate_criteria": ["一段"]},
+                ],
+            }, ensure_ascii=False))
+            seen = {}
+
+            def produce(role, stage, upstream, attempt, feedback="", requirements=""):
+                seen[(stage, role.name)] = requirements
+                return f"{S1}\n正文\n" if requirements.startswith("必须包含") else "素材意见\n"
+
+            pdca = PDCA(judge, Ledger(root / "l.jsonl"), plan, produce,
+                        {"correctness": "正确性"})
+            pdca.run(Declaration(goal="t", dims=("correctness",),
+                                 criteria=("一段",), budget_tokens=100_000))
+            self.assertTrue(seen[("成稿", "执行")].startswith("必须包含"), "执笔角色该拿到标题要求")
+            self.assertIn("不要写 ## 标题", seen[("成稿", "专家")])
+            self.assertIn("不要写 ## 标题", seen[("成稿", "验证")])
+
+
 if __name__ == "__main__":
     unittest.main()
