@@ -1,0 +1,5 @@
+{"seq": 1, "ts": 1795075160.229564, "kind": "experiment_start", "actor": "driver", "payload": {"experiment": "M0b-2", "task": "实现 xm/bus.py（9 条规格，测试覆盖 7 条）"}}
+{"seq": 2, "ts": 1795075160.230404, "kind": "acceptance_red", "actor": "auditor", "payload": {"test": "tests/test_bus.py", "sha": "e1740011", "rc": 1}}
+{"seq": 3, "ts": 1795075160.230734, "kind": "autonomous_dispatch", "actor": "exec-a2", "payload": {"arm": "A", "round": 1}}
+{"seq": 4, "ts": 1795075160.231064, "kind": "autonomous_dispatch", "actor": "solo-b3", "payload": {"arm": "B", "round": 1}}
+{"seq": 5, "ts": 1795075160.231242, "kind": "ground_truth", "actor": "auditor", "payload": {"A_tests": "13/13", "B_tests": "13/13", "A_probe": "7/7", "B_probe": "7/7"}}
