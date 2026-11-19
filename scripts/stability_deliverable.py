@@ -66,7 +66,9 @@ def main() -> int:
     for i in range(args.n):
         run_dir = base / f"run{i + 1}"
         run_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_dir / "check.py", run_dir / "check.py")
+        for aux in src_dir.iterdir():
+            if aux.is_file() and aux.suffix in {".py", ".json"} and aux.name != "task.json":
+                shutil.copy2(aux, run_dir / aux.name)
         target = run_dir / task["target_name"]
         cfg = DaemonConfig(
             spec=task["spec"],
