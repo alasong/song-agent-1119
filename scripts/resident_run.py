@@ -78,8 +78,19 @@ def main() -> int:
     checkpoint = out_dir / "checkpoint.json"
 
     already = 0.0
-    if args.resume and checkpoint.exists():
-        already = float(json.loads(checkpoint.read_text(encoding="utf-8")).get("running_hours", 0))
+    if args.resume:
+        if checkpoint.exists():
+            already = float(json.loads(checkpoint.read_text(encoding="utf-8")).get("running_hours") or 0)
+        if already == 0.0:
+            # 回退：从历史账本的时间跨度推算已跑时长（老检查点没有该字段）
+            spans = []
+            for led in out_dir.glob("ledger-*.jsonl"):
+                events = [json.loads(l)["ts"] for l in led.read_text(encoding="utf-8").splitlines() if l.strip()]
+                if events:
+                    spans.append((min(events), max(events)))
+            if spans:
+                started = min(s for s, _ in spans)
+                already = round((time.time() - started) / 3600, 4)
         print(json.dumps({"resume_from_hours": already}, ensure_ascii=False))
 
     resident = Resident(ledger, make_policy(),
