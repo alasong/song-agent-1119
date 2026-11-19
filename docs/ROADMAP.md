@@ -131,4 +131,4 @@ L2+ 元治理、强校验（形式化验证）、物理世界接口、AI 版自�
 | 设计文档 v2.1（含激励层） | 完成 | 设计文档 §15、§16 |
 | ROADMAP v1 | 完成 | 本文件 |
 | M0a 测量仪 | 完成 | `python3 -m unittest discover -s tests -t .` 17 绿；反例测试在 `XM_DISABLE_LIVENESS=1` 下变红；读数见 `reports/m0a.json` |
-| M0b 真主体 | 已跑一轮（空结果） | 两组 1 轮内均通过、均无作弊，`discriminated=false`；读数见 `reports/m0b.json` |
+| M0b 真主体 | 已跑两轮，均空结果 | ①ticket：两组 1 轮通过（`reports/m0b.json`）②bus：两组 13/13 测试 + 7/7 隐形规格探针通过（`reports/m0b2.json`）。两轮 `discriminated=false`：单轮任务上三角色无增量 |
