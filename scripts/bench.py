@@ -84,16 +84,18 @@ def g4_knowledge() -> dict:
 
 
 def g5_stability() -> dict:
-    records = sorted((ROOT / "reports").glob("stability-*.json"))
+    records = sorted((ROOT / "reports").glob("deliverable-stability-*.json"))
     if not records:
-        return {"passed": False, "evidence": "没有稳定性探针记录",
-                "next": "跑 scripts/stability_probe.py：同目标 N=3，比关键结论"}
+        return {"passed": False, "evidence": "没有交付稳定性记录（只测过组队稳定，不算）",
+                "next": "同一交付任务跑 N=3，比对命名条目重合度"}
     latest = json.loads(records[-1].read_text(encoding="utf-8"))
-    ok = latest.get("n", 0) >= 3 and latest.get("score", 0) >= latest.get("threshold", 2 / 3)
+    score = latest.get("score", 0)
+    ok = latest.get("n", 0) >= 3 and score >= latest.get("threshold", 2 / 3)
     return {
         "passed": ok,
-        "evidence": f"N={latest.get('n')}，一致率={latest.get('score')}，阈值={round(latest.get('threshold', 0), 3)}",
-        "next": "同一任务/目标重复 N=3，关键结论一致率须 ≥2/3",
+        "evidence": f"同一交付任务 N={latest.get('n')}，结论条目重合率={score}"
+                    f"（阈值 {round(latest.get('threshold', 0), 3)}）",
+        "next": "三次交付的命名条目要重合 ≥2/3；当前每次都换一套说法",
     }
 
 
