@@ -1,0 +1,122 @@
+{
+  "ts": "2026-11-19T20:41:43",
+  "task": "/Users/song/xm-runs/2026-11-19-rsi",
+  "A_single_agent": {
+    "passed": true,
+    "rounds": 3,
+    "chars": 3240,
+    "calls": 3,
+    "prompt_tokens": 1361,
+    "completion_tokens": 5919,
+    "cache_hit": 256,
+    "hit_ratio": 0.1881,
+    "artifact": "/Users/song/xm-runs/ab/single-20261119-202404/rsi.md",
+    "quality_total": 6,
+    "quality_dims": {
+      "结论": 0,
+      "证据": 1,
+      "取舍": 1,
+      "局限": 2,
+      "可执行": 2
+    }
+  },
+  "B_sa_org": {
+    "passed": true,
+    "rounds": 1,
+    "chars": 3543,
+    "calls": 5,
+    "prompt_tokens": 4006,
+    "completion_tokens": 3802,
+    "cache_hit": 512,
+    "hit_ratio": 0.1278,
+    "artifact": "/Users/song/xm-runs/2026-11-19-rsi/sa-run-20261119-202456/deliverable.md",
+    "quality_total": 6,
+    "quality_dims": {
+      "结论": 0,
+      "证据": 1,
+      "取舍": 1,
+      "局限": 2,
+      "可执行": 2
+    }
+  },
+  "better": {
+    "A": [
+      "calls",
+      "prompt_tokens"
+    ],
+    "B": [
+      "rounds",
+      "chars",
+      "completion_tokens"
+    ],
+    "tie": [
+      "passed",
+      "quality_total"
+    ]
+  },
+  "verdict": "互有胜负，无 Pareto 占优",
+  "quality": {
+    "blind": true,
+    "seed": 0,
+    "rubric": [
+      {
+        "dim": "结论",
+        "max": 3,
+        "desc": "开篇一句话说清做成了什么、没做成什么，且与正文一致"
+      },
+      {
+        "dim": "证据",
+        "max": 3,
+        "desc": "关键断言有可核对的依据（命令、读数、文件路径），不是形容词堆砌"
+      },
+      {
+        "dim": "取舍",
+        "max": 3,
+        "desc": "给出候选与取舍理由，说明否掉了什么、为什么否"
+      },
+      {
+        "dim": "局限",
+        "max": 3,
+        "desc": "明写未验证项、依赖条件、只验了哪一层"
+      },
+      {
+        "dim": "可执行",
+        "max": 3,
+        "desc": "读者能据此做出下一步决定，而不是看完还得再问一次"
+      }
+    ],
+    "scores": {
+      "A": {
+        "index": 0,
+        "doc": 1,
+        "dims": {
+          "结论": 0,
+          "证据": 1,
+          "取舍": 1,
+          "局限": 2,
+          "可执行": 2
+        },
+        "total": 6,
+        "note": "开篇无结论句；证据多为文献名无读数；有止损无候选取舍；局限较实；实验可操作"
+      },
+      "B": {
+        "index": 1,
+        "doc": 2,
+        "dims": {
+          "结论": 0,
+          "证据": 1,
+          "取舍": 1,
+          "局限": 2,
+          "可执行": 2
+        },
+        "total": 6,
+        "note": "同样缺开篇结论；证据引文献无实测；有止损阈值但无候选对比；局限诚实；步骤含验收"
+      }
+    },
+    "winner": null,
+    "tie": true,
+    "judge_calls": 1,
+    "judge_tokens": 4579
+  },
+  "judged_from": "/Users/song/1github/song-agent-1119/reports/ab-20261119-202526.json"
+}

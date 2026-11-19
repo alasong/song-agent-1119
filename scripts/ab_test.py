@@ -16,13 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from xm.daemon import Daemon, DaemonConfig
-from xm.ledger import Ledger
+from xm import quality
 from xm.llm import complete_usage
-from xm.paths import runs_root
 from xm.sa_task import run as sa_run
 
 ROOT = Path(__file__).resolve().parents[1]
+DIMS = ["passed", "rounds", "chars", "calls", "prompt_tokens", "completion_tokens"]
 
 
 def make_llm(model: str, sink: list[dict]):
@@ -44,21 +43,11 @@ def usage_stats(sink: list[dict]) -> dict:
 
 
 def arm_single(task_dir: Path, model: str) -> dict:
-    task = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
-    run_dir = runs_root() / "ab" / f"single-{time.strftime('%Y%m%d-%H%M%S')}"
-    run_dir.mkdir(parents=True, exist_ok=True)
-    target = run_dir / task["target_name"]
     sink: list[dict] = []
-    cfg = DaemonConfig(
-        spec=task["spec"], target_file=str(target), tests=[], artifacts_root=str(runs_root()),
-        verify_cmd=[sys.executable, str(task_dir / task.get("check", "check.py")), str(target)],
-        max_rounds=3, patience=2, fence_lang=task.get("fence_lang", "markdown"),
-        budget_tokens=200_000,
-    )
-    summary = Daemon(Ledger(run_dir / "ledger.jsonl"), make_llm(model, sink), cfg).run()
-    text = target.read_text(encoding="utf-8") if target.exists() else ""
-    return {"passed": bool(summary["green_at_round"]), "rounds": summary["rounds_used"],
-            "chars": len(text), **usage_stats(sink), "artifact": str(target)}
+    from xm.single import run_single
+    res = run_single(task_dir, make_llm(model, sink))
+    return {"passed": res["passed"], "rounds": res["rounds"], "chars": res["chars"],
+            **usage_stats(sink), "artifact": res["artifact"]}
 
 
 def arm_org(task_dir: Path, model: str, max_roles: int, max_stages: int) -> dict:
@@ -71,7 +60,9 @@ def arm_org(task_dir: Path, model: str, max_roles: int, max_stages: int) -> dict
 
 
 def compare(a: dict, b: dict) -> dict:
-    dims = ["passed", "rounds", "chars", "calls", "prompt_tokens", "completion_tokens"]
+    dims = list(DIMS)
+    if isinstance(a.get("quality_total"), int) and isinstance(b.get("quality_total"), int):
+        dims.append("quality_total")   # 质量分越高越好，只有在盲评跑过之后才进比较
     better = {"A": [], "B": [], "tie": []}
     for d in dims:
         va, vb = a.get(d), b.get(d)
@@ -90,26 +81,87 @@ def compare(a: dict, b: dict) -> dict:
     return {"better": better, "verdict": verdict}
 
 
+def judge_pair(a_text: str, b_text: str, model: str, seed: int = 0) -> dict:
+    """盲评两臂：送进去的只有正文，顺序按种子打乱，评完再映射回 A/B。"""
+    sink: list[dict] = []
+    llm = make_llm(model, sink)
+    result = quality.judge([a_text, b_text], lambda m: llm(m, max_tokens=1200), seed=seed)
+    by_index = {r["index"]: r for r in result["scores"]}
+    judge_tokens = sum((u.get("prompt_cache_hit_tokens", 0) or 0)
+                       + (u.get("prompt_cache_miss_tokens", 0) or 0)
+                       + (u.get("completion_tokens", 0) or 0) for u in sink)
+    return {
+        "blind": result["blind"], "seed": result["seed"], "rubric": result["rubric"],
+        "scores": {"A": by_index.get(0), "B": by_index.get(1)},
+        "winner": {0: "A", 1: "B"}.get(result["winner"]),
+        "tie": result["tie"],
+        "judge_calls": len(sink), "judge_tokens": judge_tokens,
+    }
+
+
+def attach_quality(result: dict, model: str, seed: int = 0) -> dict:
+    """对已有两臂产物做盲评，并把质量分并进 Pareto 比较。"""
+    texts = [Path(result["A_single_agent"]["artifact"]).read_text(encoding="utf-8"),
+             Path(result["B_sa_org"]["artifact"]).read_text(encoding="utf-8")]
+    q = judge_pair(texts[0], texts[1], model, seed)
+    for arm_key, label in (("A_single_agent", "A"), ("B_sa_org", "B")):
+        score = q["scores"].get(label) or {}
+        result[arm_key]["quality_total"] = score.get("total")
+        result[arm_key]["quality_dims"] = score.get("dims")
+    result["quality"] = q
+    cmp = compare(result["A_single_agent"], result["B_sa_org"])
+    result["better"], result["verdict"] = cmp["better"], cmp["verdict"]
+    return result
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", required=True)
+    ap.add_argument("--task", default="", help="任务目录（--judge-existing 时可省）")
     ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--roles", type=int, default=3)
     ap.add_argument("--stages", type=int, default=1)
+    ap.add_argument("--judge", action="store_true", help="跑完两臂再做一次盲评打分")
+    ap.add_argument("--judge-existing", default="",
+                    help="只对已有 A/B 报告的产物做盲评（不重跑两臂）")
+    ap.add_argument("--seed", type=int, default=0, help="盲评顺序种子（可复现）")
     args = ap.parse_args()
 
+    if args.judge_existing:
+        src = Path(args.judge_existing).expanduser().resolve()
+        result = json.loads(src.read_text(encoding="utf-8"))
+        result = attach_quality(result, args.model, args.seed)
+        result["judged_from"] = str(src)
+        result["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        out = ROOT / "reports"
+        out.mkdir(exist_ok=True)
+        path = out / f"ab-quality-{time.strftime('%Y%m%d-%H%M%S')}.json"
+        path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps({"verdict": result["verdict"], "better": result["better"],
+                          "quality": {"A": result["A_single_agent"].get("quality_total"),
+                                      "B": result["B_sa_org"].get("quality_total"),
+                                      "winner": result["quality"]["winner"],
+                                      "tie": result["quality"]["tie"],
+                                      "judge_calls": result["quality"]["judge_calls"]},
+                          "saved_to": str(path)}, ensure_ascii=False, indent=2))
+        return 0
+
+    if not args.task:
+        ap.error("--task 必填（除非用 --judge-existing）")
     task_dir = Path(args.task).expanduser().resolve()
     a = arm_single(task_dir, args.model)
     b = arm_org(task_dir, args.model, args.roles, args.stages)
     result = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "task": str(task_dir),
               "A_single_agent": a, "B_sa_org": b, **compare(a, b)}
+    if args.judge:
+        result = attach_quality(result, args.model, args.seed)
     out = ROOT / "reports"
     out.mkdir(exist_ok=True)
     path = out / f"ab-{time.strftime('%Y%m%d-%H%M%S')}.json"
     path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"A": {k: a[k] for k in ("passed", "rounds", "chars", "calls", "prompt_tokens")},
                       "B": {k: b[k] for k in ("passed", "rounds", "chars", "calls", "prompt_tokens")},
+                      "quality": result.get("quality", {}).get("scores") if args.judge else None,
                       "verdict": result["verdict"], "better": result["better"],
                       "saved_to": str(path)}, ensure_ascii=False, indent=2))
     return 0
