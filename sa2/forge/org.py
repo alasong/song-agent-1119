@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass, replace
 
 KINDS = {"planner", "researcher", "expert", "executor", "verifier", "curator"}
+# 能「去看外面东西」的工具能力；researcher 手上至少得有一件这样的。
+FETCH_CAPABILITIES = {"fetch", "search", "crawl", "api", "database"}
 
 
 class OrgError(RuntimeError):
@@ -24,6 +26,9 @@ class Role:
     duty: str
     criteria: str
     budget: int
+    # 手上有什么：工具库里已登记的工具名。researcher 必须带——没有工具就只能凭记忆，
+    # 那不叫采集（rsi 那轮 21 条全在训练截止之前，就是这个原因）。
+    tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,7 +64,8 @@ class OrgPlan:
 
 
 def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
-               available_criteria=None, require_gates: bool = True) -> OrgPlan:
+               available_criteria=None, require_gates: bool = True,
+               available_tools=None) -> OrgPlan:
     match = re.search(r"\{.*\}", raw or "", re.S)
     if not match:
         raise OrgError("模型输出里没有 JSON")
@@ -79,6 +85,7 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
         duty = str(item.get("duty", "")).strip()
         criteria = str(item.get("criteria", "")).strip()
         budget = int(item.get("budget", 0) or 0)
+        tools = tuple(str(x).strip() for x in (item.get("tools") or []) if str(x).strip())
         if not name or not duty or not criteria:
             raise OrgError(f"第 {i} 个角色缺 name/duty/criteria")
         if kind not in KINDS:
@@ -89,8 +96,24 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
             raise OrgError(f"第 {i} 个角色预算必须为正")
         if duty == criteria:
             raise OrgError(f"角色 {name} 的 duty 与 criteria 是同一句话：职责和判法是两件事")
+        caps = {} if available_tools is None else dict(available_tools)
+        if available_tools is not None and tools:
+            unknown_tools = [t for t in tools if t not in caps]
+            if unknown_tools:
+                raise OrgError(f"角色 {name} 引用了工具库里没有的工具：{unknown_tools}"
+                               f"（可选：{sorted(caps)}）")
+        if kind == "researcher":
+            # 「有工具」不够，得是**能去看外面**的工具：挂一个章节检查器也过，那是假的手。
+            usable = [t for t in tools if str(caps.get(t, "")) in FETCH_CAPABILITIES]
+            if not (tools and (usable or available_tools is None)):
+                raise OrgError(
+                    f"角色 {name} 是 researcher，却没有能去看外面的手"
+                    f"（它挂的：{ {t: caps.get(t) for t in tools} or '没挂任何工具' }；"
+                    f"库里能用的：{sorted(t for t in caps if caps[t] in FETCH_CAPABILITIES) or '一件也没有'}）。"
+                    f"没有手就只能凭记忆写清单——实测那轮 21 条最新只到训练截止前。"
+                    f"要么先造一件 fetch 类工具入库，要么把 kind 改成 expert（只做推理，不需要手）。")
         seen.add(name)
-        roles.append(Role(name, kind, duty, criteria, budget))
+        roles.append(Role(name, kind, duty, criteria, budget, tools))
 
     if not any(r.kind == "verifier" for r in roles):
         raise OrgError("没有独立验证角色（kind=verifier）——不允许自己给自己发毕业证")
@@ -139,7 +162,7 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
     return plan
 
 
-def _org_prompt(goal: str, budget_cap: int, criteria) -> str:
+def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "") -> str:
     return f"""你是这个组织的 Super，负责搭班子。领导下达了一个目标，你要组一支能交付的团队。
 
 目标：{goal}
@@ -149,6 +172,11 @@ def _org_prompt(goal: str, budget_cap: int, criteria) -> str:
 - 每个角色的 duty 写「只负责什么」，criteria 写「怎么判它干得好」（必须可机检或可验收）
 - 必须有一个独立的 verifier 角色，它不参与生产
 - 每个角色给 token 预算，总和不超过 {budget_cap}
+- 角色可以带 tools（工具名列表），只能从下面这些**工具库里已登记**的选：
+  {tools_text or "（工具库是空的，这一轮谁都不许带 tools）"}
+- kind=researcher 的角色手上必须有一件**能去看外面**的工具（能力标 fetch/search/crawl/api/database）：
+  没有手就只能凭记忆写清单。这一轮想不出谁有这种工具，就别设 researcher——用 expert，
+  它只做推理、不需要手。
 - 2–4 个阶段；每个阶段必须写明：产出物 output、参与角色 roles（真子集，不是全体）、
   阶段门 gate_criteria（这一阶段按哪些判据算过）
 - gate_criteria 只能从下面这些**已登记**判据里选，一个都不许自造（自造等于自己发毕业证）：
@@ -156,15 +184,16 @@ def _org_prompt(goal: str, budget_cap: int, criteria) -> str:
 - **每个角色至少要在某一个阶段的 roles 里出现一次**，没派活就别设这个角色
 
 只返回一个 JSON：
-{{"roles":[{{"name":"","kind":"","duty":"","criteria":"","budget":0}}],
+{{"roles":[{{"name":"","kind":"","duty":"","criteria":"","budget":0,"tools":[]}}],
   "stages":[{{"name":"","output":"","roles":[""],"gate_criteria":[""]}}]}}"""
 
 
 def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2,
-             require_gates: bool = True) -> OrgPlan:
+             require_gates: bool = True, available_tools=None) -> OrgPlan:
     """生成编制。被自己的校验拒了就带着拒收原因重来一次——
     不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。"""
-    prompt = _org_prompt(goal, budget_cap, criteria)
+    tools_text = "、".join(f"{n}[{c}]" for n, c in (available_tools or {}).items())
+    prompt = _org_prompt(goal, budget_cap, criteria, tools_text)
     feedback = ""
     last: OrgError | None = None
     for _ in range(max(1, attempts)):
@@ -172,11 +201,38 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: i
             f"{prompt}\n\n上次这份编制被拒，原因：{feedback}\n请修正后重新输出完整 JSON。")
         try:
             return parse_plan(goal, llm([{"role": "user", "content": ask}]), budget_cap,
-                              available_criteria=criteria, require_gates=require_gates)
+                              available_criteria=criteria, require_gates=require_gates,
+                              available_tools=available_tools)
         except OrgError as exc:
             last = exc
             feedback = str(exc)
     raise last if last else OrgError("编制生成失败")
+
+
+def collapse_uncovered(plan: OrgPlan, writers, covered: int):
+    """切片只够 `covered` 份时，把多出来的写手阶段并进最后一个拿到切片的阶段。
+
+    为什么不干脆让它跑：它没有自己的章节，只能被兜成「整篇交付」当门，append 模式下两次
+    必红（2026-11-20 真跑：4 阶段 / 3 标题，passed=False）。**结构由样例定义，编制服从**，
+    多出来的阶段不是多余的人，是他们并入前一阶段一起写那一片。
+
+    返回 (新编制, 截断后的写手列表, 被并掉的阶段名)。
+    """
+    writers = list(writers)
+    if not writers or covered <= 0 or covered >= len(writers):
+        return plan, writers, ()
+    keep = writers[covered - 1]
+    dropped = writers[covered:]
+    drop_names = {st.name for st in dropped}
+    merged_roles = tuple(dict.fromkeys(
+        keep.roles + tuple(r for st in dropped for r in st.roles)))
+    stages = tuple(replace(st, roles=merged_roles) if st.name == keep.name else st
+                   for st in plan.stages if st.name not in drop_names)
+    surviving = {name for st in stages for name in st.roles}
+    lost = [r.name for r in plan.roles if r.name not in surviving]
+    if lost:
+        raise OrgError(f"合并后会丢掉角色：{lost}")
+    return replace(plan, stages=stages), writers[:covered], tuple(sorted(drop_names))
 
 
 def attach_stage_gates(plan: OrgPlan, gates: dict[str, tuple[str, ...]]) -> OrgPlan:

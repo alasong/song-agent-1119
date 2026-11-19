@@ -67,6 +67,11 @@ def _register(judge: Judge, specs) -> list[str]:
     return [c.name for c in specs]
 
 
+def _tool_caps(store: ToolStore) -> dict[str, str]:
+    """工具名 → 能力标签。编制校验靠它判「这个角色手上是不是真有能用的手」。"""
+    return {name: str(entry.get("capability") or "") for name, entry in store.all().items()}
+
+
 def shelve(store: ToolStore, path, crit, signature: str):
     """把生成的脚本收进工具库，并把判据的 cmd 改指向库里的稳定地址。
 
@@ -147,7 +152,7 @@ def main() -> int:
         if args.auto_org:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
-                                   require_gates=False)
+                                   require_gates=False, available_tools=_tool_caps(tool_store))
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
@@ -197,8 +202,14 @@ def main() -> int:
 
         writers = [st for st in plan.stages if st.mode == "replace"] or list(plan.stages)
         chunks = fc.plan_slices(heads, len(writers))
-        if len(chunks) != len(writers):
-            notes["slice_mismatch"] = f"{len(heads)} 个标题 / {len(writers)} 个阶段"
+        # 样例给的标题比阶段少时，把多余阶段并进最后一个拿到切片的阶段。
+        # 结构由样例定义、编制服从；不让它落进「没切片 → 兜成全部交付判据」那条路。
+        plan, writers, dropped = fo.collapse_uncovered(plan, writers, len(chunks))
+        if dropped:
+            notes["stage_merge"] = (f"{len(dropped)} 个阶段并进「{writers[-1].name}」："
+                                    f"样例只给了 {len(heads)} 个标题")
+            ledger.append("stage_merge", "live",
+                          {"into": writers[-1].name, "dropped": list(dropped)})
         for order, (stage, chunk) in enumerate(zip(writers, chunks)):
             piece = fc.slice_sample(sample, chunk)
             specs = [fc.tested(fc.replace(
@@ -263,7 +274,8 @@ def main() -> int:
     elif plan is None:
         if args.auto_org:
             try:
-                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names())
+                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
+                                   available_tools=_tool_caps(tool_store))
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:

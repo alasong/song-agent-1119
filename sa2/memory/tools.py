@@ -62,11 +62,14 @@ class ToolStore:
 
     # ── 入库 ────────────────────────────────────────────────────────────────
     def store(self, script: str | Path, name: str, owner: str,
-              signature: str = "", self_test: dict | None = None) -> dict:
+              signature: str = "", self_test: dict | None = None,
+              capability: str = "checker") -> dict:
         """把一份脚本收进库，返回登记项。
 
         `owner` 是登记方（不是生成方）；`self_test` 必须是真跑过的读数
         （`{"ok": True, ...}`），没有就拒——工具「好使」不能由造它的人自己说。
+        `capability` 写这把刀能干什么（checker / fetch / search / ...）：
+        编制校验靠它判「这个角色手上是不是真有能用的手」，而不是光看有没有挂名字。
         """
         src = Path(script).expanduser()
         if not src.is_file():
@@ -91,6 +94,7 @@ class ToolStore:
         version = int(old.get("version") or 0) + 1 if old else 1
         entry = {
             "name": name, "digest": digest, "path": str(target), "signature": signature,
+            "capability": capability,
             "owner": owner, "version": version, "self_test": self_test,
             "added": _now(), "uses": 0, "last_used": "",
         }

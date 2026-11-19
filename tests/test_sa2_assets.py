@@ -74,6 +74,13 @@ class ToolStoreTest(unittest.TestCase):
         with self.assertRaises(ToolError):
             self.store.get("不存在的工具")
 
+    def test_capability_defaults_to_checker_and_is_recorded(self):
+        entry = self.store_it()
+        self.assertEqual(entry["capability"], "checker", "检查器是默认能力，别冒充成手")
+        other = self.store.store(self.script, name="抓取器", owner="leader",
+                                 capability="fetch", self_test={"ok": True})
+        self.assertEqual(other["capability"], "fetch")
+
     def test_touch_records_use(self):
         self.store_it()
         entry = self.store.touch("检查器")

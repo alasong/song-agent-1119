@@ -175,3 +175,95 @@ class ContentCriteriaTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ResearcherToolsTest(unittest.TestCase):
+    """没有手的 researcher 不许过编制：凭记忆写清单不是采集（rsi 那轮实测的根因）。
+
+    「有工具」也不够——挂一个章节检查器同样过不了：那是一件检查器，不是一双手。
+    """
+
+    def roles_with(self, kind: str, tools=None) -> str:
+        role = {"name": "查", "kind": kind, "duty": "找资料", "criteria": "有来源", "budget": 20}
+        if tools:
+            role["tools"] = tools
+        return org_json(roles=[
+            {"name": "规划", "kind": "planner", "duty": "拆", "criteria": "可验收", "budget": 10},
+            role,
+            {"name": "验证", "kind": "verifier", "duty": "只判", "criteria": "有结论", "budget": 5},
+        ], stages=[
+            {"name": "查资料", "output": "清单", "roles": ["规划", "查"], "gate_criteria": ["g1"]},
+            {"name": "定稿", "output": "稿子", "roles": ["查", "验证"], "gate_criteria": ["g2"]},
+        ])
+
+    def test_researcher_without_tools_is_refused(self):
+        with self.assertRaises(fo.OrgError) as ctx:
+            fo.parse_plan("目标", self.roles_with("researcher"))
+        self.assertIn("researcher", str(ctx.exception))
+
+    def test_researcher_with_fetch_tool_passes(self):
+        plan = fo.parse_plan("目标", self.roles_with("researcher", ["抓取器"]),
+                             available_tools={"抓取器": "fetch"})
+        self.assertEqual(plan.role("查").tools, ("抓取器",))
+
+    def test_checker_is_not_a_hand(self):
+        with self.assertRaises(fo.OrgError) as ctx:
+            fo.parse_plan("目标", self.roles_with("researcher", ["章节检查器"]),
+                          available_tools={"章节检查器": "checker"})
+        self.assertIn("researcher", str(ctx.exception))
+
+    def test_unknown_tool_is_refused(self):
+        with self.assertRaises(fo.OrgError) as ctx:
+            fo.parse_plan("目标", self.roles_with("researcher", ["没这个"]),
+                          available_tools={"抓取器": "fetch"})
+        self.assertIn("没这个", str(ctx.exception))
+
+    def test_capability_unknown_is_not_judged(self):
+        """没给能力表时不能凭空判红，只能先信它挂的名字。"""
+        plan = fo.parse_plan("目标", self.roles_with("researcher", ["某个工具"]))
+        self.assertEqual(plan.role("查").tools, ("某个工具",))
+
+    def test_expert_needs_no_tool(self):
+        plan = fo.parse_plan("目标", self.roles_with("expert"))
+        self.assertEqual(plan.role("查").tools, ())
+
+
+class CollapseUncoveredTest(unittest.TestCase):
+    """样例标题比阶段少时，多余阶段并进最后一个拿到切片的阶段。
+
+    不许让它落进「没切片 → 兜成全部交付判据」那条路：append 模式下那两次必红
+    （2026-11-20 真跑 4 阶段 / 3 标题，passed=False）。
+    """
+
+    def four_stages(self):
+        data = json.loads(org_json())
+        data["roles"].append({"name": "补充", "kind": "curator", "duty": "归档",
+                              "criteria": "可查", "budget": 5})
+        data["stages"] = [
+            {"name": "一", "output": "a", "roles": ["规划"], "gate_criteria": ["g1"]},
+            {"name": "二", "output": "b", "roles": ["执行"], "gate_criteria": ["g2"]},
+            {"name": "三", "output": "c", "roles": ["验证"], "gate_criteria": ["g3"]},
+            {"name": "四", "output": "d", "roles": ["补充"], "gate_criteria": ["g4"]},
+        ]
+        return fo.parse_plan("目标", json.dumps(data, ensure_ascii=False), require_gates=False)
+
+    def test_extra_stage_merges_into_last_covered(self):
+        plan = self.four_stages()
+        merged, kept, dropped = fo.collapse_uncovered(plan, list(plan.stages), 3)
+        self.assertEqual([st.name for st in merged.stages], ["一", "二", "三"])
+        self.assertEqual(dropped, ("四",))
+        self.assertEqual(len(kept), 3)
+        by_name = {st.name: st for st in merged.stages}
+        self.assertIn("补充", by_name["三"].roles, "被并掉的阶段，人和活要一起过去")
+
+    def test_no_role_is_lost(self):
+        plan = self.four_stages()
+        merged, _, _ = fo.collapse_uncovered(plan, list(plan.stages), 3)
+        surviving = {n for st in merged.stages for n in st.roles}
+        self.assertEqual(surviving, {r.name for r in merged.roles})
+
+    def test_no_op_when_there_are_enough_slices(self):
+        plan = self.four_stages()
+        same, kept, dropped = fo.collapse_uncovered(plan, list(plan.stages), 4)
+        self.assertEqual(same, plan)
+        self.assertEqual(len(kept), 4)
+        self.assertEqual(dropped, ())
