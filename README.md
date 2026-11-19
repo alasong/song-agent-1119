@@ -61,3 +61,6 @@ python3 scripts/bootstrap_run.py
 1. **没有机检判据的任务不接**——判据先写，再动手。
 2. **结构性变更走人审**：系统只能改 `sandbox/`，改完出 diff，人看 diff 决定合入。
 3. **失败要大声**：跳过、降级、没覆盖都写进 `reports/` 与 `unmeasured` 字段，不静默通过。
+---
+
+能力验收（什么算够了）：见 `docs/ACCEPTANCE.md`，跑 `python3 scripts/bench.py`。
