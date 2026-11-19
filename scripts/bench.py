@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -267,7 +268,9 @@ def main() -> int:
     out = ROOT / "reports"
     out.mkdir(exist_ok=True)
     path = out / f"bench-{time.strftime('%Y%m%d-%H%M%S')}.json"
-    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 测试套件里跑 bench 不落证据文件：那份读数没人看，只会让工作区一直脏
+    if os.environ.get("XM_BENCH_NO_WRITE") != "1":
+        path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))

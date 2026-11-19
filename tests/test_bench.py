@@ -12,8 +12,10 @@ EXPECTED = {"G1 自主性", "G2 组织性", "G3 判据能力", "G4 知识扩展"
 class BenchSelfTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        import os
+        env = {**os.environ, "XM_BENCH_NO_WRITE": "1"}   # 测试里的读数不是证据，别落盘
         proc = subprocess.run([sys.executable, "scripts/bench.py", "--json"],
-                              cwd=ROOT, capture_output=True, text=True)
+                              cwd=ROOT, capture_output=True, text=True, env=env)
         cls.rc = proc.returncode
         cls.report = json.loads(proc.stdout)
 
