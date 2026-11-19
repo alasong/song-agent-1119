@@ -12,12 +12,40 @@ from dataclasses import asdict
 from pathlib import Path
 
 from xm.hiring import plan_org
+from xm.kb import KnowledgeBase, as_prompt_block, default_path, writeback_if_passed
 from xm.ledger import Ledger
 from xm.scheduler import Scheduler
 
 
 def _call(llm, prompt: str, max_tokens: int = 3000) -> str:
     return llm([{"role": "user", "content": prompt}], max_tokens)
+
+
+def role_prompt(spec: str, goal: str, role: dict, stage: str,
+                upstream: dict | None, fact_block: str = "") -> str:
+    """角色提示词。顺序按缓存友好排：共用规格在前，易变内容在后。
+
+    知识底座检索到的已验证事实插在规格之后——只取不用等于买了书只对页码。
+    """
+    upstream_text = (upstream or {}).get("content", "")[:1200] or "（无，你是第一个）"
+    facts = f"\n{fact_block}\n" if fact_block else ""
+    return f"""## 任务规格（所有角色共用，判据按它判）
+{spec}
+
+## 组织目标
+{goal}
+{facts}
+## 你的角色
+你是「{role['name']}」，职责：{role['duty']}
+你的验收方式：{role['criteria']}
+
+当前阶段：{stage}
+上游交付：
+```
+{upstream_text}
+```
+
+给出你在这一阶段的交付，不超过 300 字，只写交付物本身。"""
 
 
 def _run_check(check: Path, target: Path) -> tuple[int, str]:
@@ -70,28 +98,15 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3,
     })
 
     t1 = time.time()
-    # ② 派活：角色带目标干活，逐级交接
+    # ② 派活：角色带目标干活，逐级交接（先把已验事实检索出来塞进提示词）
+    kb = KnowledgeBase(default_path())
+    facts = kb.retrieve(goal, limit=3)
+    fact_block = as_prompt_block(facts)
+    ledger.append("kb_retrieve", "sa", {"count": len(facts), "keys": [f.key for f in facts]})
     collected: list[dict] = []
 
     def worker(role, stage, upstream):
-        # 缓存友好：所有角色共用的规格放在最前面（前缀可复用），易变内容放后面
-        prompt = f"""## 任务规格（所有角色共用，判据按它判）
-{spec}
-
-## 组织目标
-{goal}
-
-## 你的角色
-你是「{role['name']}」，职责：{role['duty']}
-你的验收方式：{role['criteria']}
-
-当前阶段：{stage}
-上游交付：
-```
-{(upstream or {}).get('content', '')[:1200] or '（无，你是第一个）'}
-```
-
-给出你在这一阶段的交付，不超过 300 字，只写交付物本身。"""
+        prompt = role_prompt(spec, goal, role, stage, upstream, fact_block)
         art = {
             "id": f"{stage}:{role['name']}",
             "upstream": (upstream or {}).get("id"),
@@ -151,6 +166,15 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3,
         attempts.append({"round": round_no, "rc": rc, "detail": out[-400:]})
         ledger.append("verify", "checker", {"round": round_no, "rc": rc})
 
+    # 过判据才回写：没过的结论进底座，等于把错的记成已验证
+    written = writeback_if_passed(
+        kb, rc == 0, doc,
+        [f"artifact:{deliverable}", f"check:{check.name}", "criteria:passed"],
+        source="sa_task",
+    )
+    ledger.append("kb_writeback", "sa", {"written": written.key if written else None,
+                                        "pass": rc == 0})
+
     report = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "process": {
@@ -162,6 +186,8 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3,
             "stages": len(plan.process),
             "attempts": len(attempts),
         },
+        "kb": {"retrieved": [f.key for f in facts],
+               "written": written.key if written else None},
         "goal": goal,
         "org": {"roles": [r.name for r in plan.roles], "process": plan.process,
                 "total_budget": plan.total_budget},
