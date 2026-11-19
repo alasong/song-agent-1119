@@ -1,0 +1,35 @@
+"""跨运行资产：判据库、案例库、登记历史。
+
+在此之前，`criteria.json` 与 `cases.jsonl` 都建在单次 run 目录下（`scripts/sa2_live.py:91-92`），
+所以每跑一次都从零开始——判据不积累、教训不复用。这一层把它们挪到跨运行目录。
+
+默认位置：`~/xm-runs/sa2/registry/`
+环境变量：`XM_SA2_REGISTRY` 可整体换掉（测试用临时目录）。
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+
+def root() -> Path:
+    return Path(os.environ.get("XM_SA2_REGISTRY",
+                               str(Path.home() / "xm-runs" / "sa2" / "registry"))).expanduser()
+
+
+def ensure() -> Path:
+    path = root()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def criteria_path() -> Path:
+    return ensure() / "criteria.json"
+
+
+def criteria_history_path() -> Path:
+    return ensure() / "criteria-history.jsonl"
+
+
+def cases_path() -> Path:
+    return ensure() / "cases.jsonl"

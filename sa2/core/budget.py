@@ -15,6 +15,7 @@ class Budget:
     usage: list[dict] = field(default_factory=list)
     chars: int = 0
     calls: int = 0
+    spent_seed: int = 0        # 断点续跑：上一次运行已经花掉的部分
 
     def note(self, text: str) -> None:
         self.calls += 1
@@ -27,9 +28,13 @@ class Budget:
     @property
     def spent(self) -> int:
         if self.usage:
-            return sum(int(u.get("total_tokens") or u.get("completion_tokens") or 0)
-                       for u in self.usage)
-        return max(1, self.chars // 4)
+            now = sum(int(u.get("total_tokens") or u.get("completion_tokens") or 0)
+                      for u in self.usage)
+        elif self.calls:
+            now = max(1, self.chars // 4)
+        else:
+            now = 0
+        return self.spent_seed + now
 
     def exhausted(self) -> bool:
         return self.spent > self.tokens

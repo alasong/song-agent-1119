@@ -16,12 +16,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .. import config
 from ..core.gate import Declaration
 from ..forge.org import OrgPlan, Role, Stage
-
-SINGLE_FLOOR = 20_000     # 低于这个预算，组队的派活都跑不完
-TEAM_DIMS = 2
-TEAM_CRITERIA = 3
 
 
 @dataclass(frozen=True)
@@ -32,11 +29,12 @@ class SizeDecision:
 
 
 def decide(decl: Declaration) -> SizeDecision:
-    if decl.budget_tokens < SINGLE_FLOOR:
-        return SizeDecision("single", f"预算 {decl.budget_tokens} < 单人下限 {SINGLE_FLOOR}", decl.budget_tokens)
-    if len(decl.dims) >= TEAM_DIMS:
+    floor = config.get("single_floor")
+    if decl.budget_tokens < floor:
+        return SizeDecision("single", f"预算 {decl.budget_tokens} < 单人下限 {floor}", decl.budget_tokens)
+    if len(decl.dims) >= config.get("team_dims"):
         return SizeDecision("team", f"声明了 {len(decl.dims)} 个维度，需要分工与独立复核", decl.budget_tokens)
-    if len(decl.criteria) >= TEAM_CRITERIA:
+    if len(decl.criteria) >= config.get("team_criteria"):
         return SizeDecision("team", f"声明了 {len(decl.criteria)} 条判据，需要独立验证方", decl.budget_tokens)
     return SizeDecision("single", "单一维度、判据不超过 2 条：先单人", decl.budget_tokens)
 

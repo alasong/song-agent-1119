@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from ..core import gate
@@ -25,7 +26,9 @@ from ..memory.cases import CaseBook
 class PDCA:
     def __init__(self, judge: Judge, ledger: Ledger, plan: OrgPlan, produce: "callable",
                  vocab, usage: list[dict] | None = None,
-                 max_stage_attempts: int = 2, cases: CaseBook | None = None):
+                 max_stage_attempts: int = 2, cases: CaseBook | None = None,
+                 state_path: str | Path | None = None, resume: bool = False,
+                 artifact_dir: str | Path | None = None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
@@ -40,6 +43,9 @@ class PDCA:
         self.usage = usage
         self.max_stage_attempts = max_stage_attempts
         self.cases = cases
+        self.state_path = Path(state_path) if state_path else None
+        self.resume = resume
+        self.artifact_dir = Path(artifact_dir) if artifact_dir else None
 
     def run(self, decl: Declaration, seed: str = "", evidence=None) -> dict:
         # ① 前置门：任何一条不成立，一次调用都不发
@@ -63,8 +69,18 @@ class PDCA:
         rejects: list[dict] = []
         redone: list[str] = []
         dispatches = 0
+        start = 0
 
-        for stage in self.plan.stages:
+        # 断点续跑：多阶段编制一次十几二十次调用，中途挂掉全丢的代价太高
+        if self.resume and self.state_path and self.state_path.exists():
+            state = json.loads(self.state_path.read_text(encoding="utf-8"))
+            start = int(state.get("stage_index") or 0)
+            text = state.get("text") or text
+            ran = set(state.get("ran") or [])
+            budget.spent_seed = int(state.get("spent") or 0)
+            self.ledger.append("resume", "loop", {"from_stage": start, "spent": budget.spent_seed})
+
+        for index, stage in enumerate(self.plan.stages[start:], start=start):
             # 判据对生成方必须是可见的：看不见要求，只能猜，猜不中就红两次。
             # 可见 ≠ 可控：生成方知道要求是什么，但改不了判据本身。
             requirements = self._requirements(stage)
@@ -99,6 +115,16 @@ class PDCA:
                 if not problems:
                     text = candidate
                     self.ledger.append("stage_ok", stage.name, {"attempt": attempt})
+                    if self.artifact_dir:
+                        self.artifact_dir.mkdir(parents=True, exist_ok=True)
+                        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stage.name)
+                        (self.artifact_dir / f"{index}-{safe}.md").write_text(
+                            candidate, encoding="utf-8")
+                    if self.state_path:
+                        self.state_path.write_text(json.dumps({
+                            "stage_index": index + 1, "text": text,
+                            "ran": sorted(ran), "spent": budget.spent,
+                        }, ensure_ascii=False), encoding="utf-8")
                     break
 
                 raw = "；".join(problems)

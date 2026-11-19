@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -71,8 +72,11 @@ def _run(path: Path, text: str, timeout: int) -> tuple[int, str]:
         target = Path(tmp) / "target.md"
         target.write_text(text, encoding="utf-8")
         try:
+            # 只给最小环境：生成的代码不该看得到任何密钥类环境变量
+            env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8"}
             proc = subprocess.run([sys.executable, str(path), str(target)],
-                                  capture_output=True, text=True, cwd=tmp, timeout=timeout)
+                                  capture_output=True, text=True, cwd=tmp, timeout=timeout,
+                                  env=env)
         except subprocess.TimeoutExpired:
             return 124, f"超时（>{timeout}s）"
         return proc.returncode, (proc.stdout or "") + (proc.stderr or "")

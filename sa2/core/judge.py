@@ -19,7 +19,8 @@ import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 KINDS = ("sections", "regex", "callable", "exec")
@@ -71,10 +72,14 @@ class Judge:
     """判定权的持有者。authority 里放的是「谁有权登记判据」，不是「谁跑判据」。"""
 
     def __init__(self, authority=("leader", "verifier"), path: str | Path | None = None,
-                 require_self_tested: bool = True):
+                 require_self_tested: bool = True,
+                 history: str | Path | None = None,
+                 ledger=None):
         self.authority = set(authority)
         self.require_self_tested = require_self_tested
         self.path = Path(path) if path else None
+        self.history = Path(history) if history else None
+        self.ledger = ledger
         self._items: dict[str, Criterion] = {}
         self._executed: set[str] = set()
         if self.path and self.path.exists():
@@ -90,9 +95,31 @@ class Judge:
             raise CriteriaError(f"判据形态 {crit.kind!r} 不在 {KINDS}")
         if self.require_self_tested and not crit.self_tested:
             raise CriteriaError(f"判据 {crit.name!r} 没跑过三反例自测，不许登记")
+        old = self._items.get(crit.name)
+        if old is not None:
+            # 同名重登不是「更新一下」：验收标准被悄悄换掉，历史交付却还标着通过。
+            # 唯一安全的做法是升版本并留痕，让「这份交付是按哪版判据过的」可回溯。
+            crit = replace(crit, version=old.version + 1)
         self._items[crit.name] = crit
         self._persist()
+        self._remember(crit, proposer, old)
         return crit
+
+    def _remember(self, crit: Criterion, proposer: str, old: Criterion | None) -> None:
+        if self.history:
+            self.history.parent.mkdir(parents=True, exist_ok=True)
+            with self.history.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                     "name": crit.name, "version": crit.version,
+                                     "kind": crit.kind, "scope": crit.scope,
+                                     "spec": crit.spec, "proposer": proposer,
+                                     "replaced_version": old.version if old else None},
+                                    ensure_ascii=False) + "\n")
+        if self.ledger:
+            self.ledger.append("criteria_approved", proposer,
+                               {"name": crit.name, "version": crit.version,
+                                "kind": crit.kind, "scope": crit.scope,
+                                "replaced_version": old.version if old else None})
 
     def names(self) -> list[str]:
         return sorted(self._items)
