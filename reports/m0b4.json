@@ -1,0 +1,17 @@
+{
+  "green_at_round": 2,
+  "rounds_used": 2,
+  "final_rc": 0,
+  "no_progress_peak": 1,
+  "ledger_events": 8,
+  "experiment": "M0b-4",
+  "driver": "none（脚本启动后无人工介入）",
+  "task": "实现 xm/retry.py，5 条验收测试",
+  "key_source": "运行中 DSH 进程 env 的 DEEPSEEK_API_KEY（凭据文件里的旧 key 已 401）",
+  "note": "第一次真正的无人值守运行：daemon 自己派活、自己跑测试、自己按失败信息返工，第 2 轮转绿。",
+  "unmeasured": [
+    "24h 连续运行",
+    "自己找目标（本轮目标由脚本给定）",
+    "多任务并行下的调度"
+  ]
+}

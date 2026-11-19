@@ -1,0 +1,8 @@
+{"seq": 1, "ts": 1795075757.519611, "kind": "dispatch", "actor": "daemon", "payload": {"round": 1}}
+{"seq": 2, "ts": 1795075759.331156, "kind": "submission", "actor": "daemon", "payload": {"round": 1, "bytes": 1035}}
+{"seq": 3, "ts": 1795075759.382313, "kind": "test_result", "actor": "daemon", "payload": {"round": 1, "rc": 1}}
+{"seq": 4, "ts": 1795075759.382562, "kind": "rejected", "actor": "daemon", "payload": {"round": 1, "reason": "ERROR: test_bad_config (tests.test_retry.RetryTest.test_bad_config)"}}
+{"seq": 5, "ts": 1795075759.382689, "kind": "dispatch", "actor": "daemon", "payload": {"round": 2}}
+{"seq": 6, "ts": 1795075761.1282, "kind": "submission", "actor": "daemon", "payload": {"round": 2, "bytes": 1041}}
+{"seq": 7, "ts": 1795075761.178838, "kind": "test_result", "actor": "daemon", "payload": {"round": 2, "rc": 0}}
+{"seq": 8, "ts": 1795075761.17917, "kind": "completed", "actor": "daemon", "payload": {"round": 2}}
