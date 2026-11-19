@@ -41,12 +41,15 @@ def g2_organization() -> dict:
     chain_ok = bool(latest.get("chain_ok"))
     handoffs = latest.get("handoffs", 0)
     mode = latest.get("worker_mode", "stub")
-    ok = scheduler and roles >= 3 and chain_ok and handoffs >= 3 and mode == "llm"
+    stages = latest.get("stages", 0)
+    has_verifier = bool(latest.get("has_verifier"))
+    ok = (scheduler and roles >= 3 and chain_ok and handoffs >= 3
+          and mode == "llm" and stages >= 2 and has_verifier)
     return {
         "passed": ok,
-        "evidence": f"覆盖角色={roles}；交接={handoffs}；链完整={chain_ok}；"
-                    f"角色执行方={mode}（要求 llm，stub 不算真干活）",
-        "next": "角色必须由真模型执行并产出内容，且产物带上游 id、断链判红",
+        "evidence": f"角色={roles}；阶段={stages}；交接={handoffs}；链完整={chain_ok}；"
+                    f"执行方={mode}；独立验证角色={has_verifier}",
+        "next": "角色由真模型执行、跨 ≥2 阶段交接、编制含独立验证角色",
     }
 
 

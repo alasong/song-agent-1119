@@ -1,0 +1,18 @@
+{
+  "ts": "2026-11-19T18:42:33",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 3,
+  "dispatches": 9,
+  "handoffs": 8,
+  "chain_ok": true,
+  "distinct_roles": 3,
+  "distinct_kinds": 3,
+  "has_verifier": false,
+  "worker_mode": "llm",
+  "sample_artifact": "**交付物：`docs/m1_regression_cases.md`（M1 装配层回归用例清单）**\n\n执行顺序与用例：\n\n1. 主链路：`create_app()`→`register_service(\"svc\",obj)`→`regi",
+  "distinct_role_names": [
+    "回归用例设计者",
+    "接口契约研究员",
+    "装配实现工程师"
+  ]
+}

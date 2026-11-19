@@ -1,0 +1,21 @@
+{
+  "ts": "2026-11-19T18:42:57",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 2,
+  "dispatches": 12,
+  "handoffs": 11,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "sample_artifact": "**交付物：独立验证方案与用例设计（本阶段）**\n\n- 验证环境：干净容器，仅装依赖，无缓存残留。\n- 用例集：\n  - A1：`config_full.yaml`/`config_min.yaml` 装配成功；`config_missin",
+  "distinct_role_names": [
+    "代码与资产整理员",
+    "回归用例设计者",
+    "接口契约研究员",
+    "独立验证员",
+    "装配实现工程师",
+    "装配领域专家"
+  ]
+}
