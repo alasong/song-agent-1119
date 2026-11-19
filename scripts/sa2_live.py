@@ -71,6 +71,8 @@ def main() -> int:
     ap.add_argument("--budget", type=int, default=60_000, help="token 上限")
     ap.add_argument("--max-tokens", type=int, default=1500, help="单次产出上限")
     ap.add_argument("--name", default="sa2-live", help="产物目录前缀")
+    ap.add_argument("--auto-goal", action="store_true", help="让 sa2 自己拆目标（forge/goal.decompose）")
+    ap.add_argument("--auto-org", action="store_true", help="让 sa2 自己出编制（forge/org.plan_org）")
     args = ap.parse_args()
 
     goal = args.goal
@@ -83,26 +85,61 @@ def main() -> int:
     cases = CaseBook(run_dir / "cases.jsonl")
     judge = Judge(authority=("leader",), path=run_dir / "criteria.json")
 
-    # 判据由生成方提议、过三反例，再交给「领导」登记（判定权不在 sa2 手里）
+    usage: list[dict] = []
+    llm = make_llm(usage)
+
+    # ① 造目标（可选）：模型拆子任务，维度从子任务里来
+    subtasks = None
+    if args.auto_goal:
+        from sa2.forge import goal as fg
+        subtasks = fg.decompose(goal, llm, fd.VOCAB)
+        (run_dir / "subtasks.json").write_text(
+            json.dumps([{"name": s.name, "deliverable": s.deliverable, "dims": list(s.dims)}
+                        for s in subtasks], ensure_ascii=False, indent=2), encoding="utf-8")
+        dims = tuple(sorted({d for s in subtasks for d in s.dims}))
+    else:
+        dims = ("correctness",)
+
+    # ② 造判据：从需求文本翻译成可执行判据 + 三反例自测，再交「领导」登记
     struct_items, content_items = fc.split_spec(spec)
     proposals = []
     if struct_items:
-        proposals.append(fc.tested(fc.propose_sections("章节齐全", struct_items, ("correctness",))))
+        proposals.append(fc.tested(fc.propose_sections("章节齐全", struct_items, dims)))
     if content_items:
-        proposals.append(fc.tested(fc.propose_content("关键要素", content_items, ("correctness",))))
+        proposals.append(fc.tested(fc.propose_content("关键要素", content_items, dims)))
     if not proposals:
         print("规格里没有可实例化的判据行", file=sys.stderr)
         return 1
     for crit in proposals:
         judge.register(crit, proposer="leader")
 
-    decl = Declaration(goal=goal, dims=("correctness",),
+    decl = Declaration(goal=goal, dims=dims,
                        criteria=tuple(c.name for c in proposals),
                        budget_tokens=args.budget)
-    plan, decision = size.plan_for(decl)
 
-    usage: list[dict] = []
-    scribe = Scribe(make_llm(usage), spec=spec, max_tokens=args.max_tokens)
+    # ③ 造组织（可选）：模型出编制；不合格就回退单人，并把失败原因写进读数
+    org_error = ""
+    if args.auto_org:
+        from sa2.forge import org as fo
+        try:
+            plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names())
+            (run_dir / "org_plan.json").write_text(json.dumps({
+                "roles": [{"name": r.name, "kind": r.kind, "duty": r.duty,
+                           "criteria": r.criteria, "budget": r.budget} for r in plan.roles],
+                "stages": [{"name": st.name, "output": st.output,
+                            "roles": list(st.roles), "gate_criteria": list(st.gate_criteria)}
+                           for st in plan.stages],
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            decision = size.SizeDecision(
+                "team", f"自生成编制：{len(plan.roles)} 角色 / {len(plan.stages)} 阶段", args.budget)
+        except fo.OrgError as exc:
+            org_error = str(exc)
+            plan = size.single_plan(decl)
+            decision = size.SizeDecision("single", f"自生成编制不合格，回退单人：{org_error}", args.budget)
+    else:
+        plan, decision = size.plan_for(decl)
+
+    scribe = Scribe(llm, spec=spec, max_tokens=args.max_tokens)
     pdca = PDCA(judge, ledger, plan, scribe, fd.VOCAB, usage=usage,
                 max_stage_attempts=2, cases=cases)
     report = pdca.run(decl, evidence=[])
@@ -129,6 +166,11 @@ def main() -> int:
         "budget": report["budget"],
         "exact_usage": bool((report["budget"] or {}).get("exact")),
         "criteria": judge.names(),
+        "subtasks": [s.name for s in subtasks] if subtasks else [],
+        "org_generated": bool(args.auto_org and not org_error),
+        "org_error": org_error,
+        "plan": {"roles": [r.name for r in plan.roles],
+                 "stages": [st.name for st in plan.stages]},
         "ledger": str(ledger.path),
         "run_dir": str(run_dir),
     }
@@ -140,7 +182,14 @@ def main() -> int:
         print("sa 2.0 真模型跑一轮")
         print(f"  目标：{goal}")
         print(f"  规模决策：{decision.scale}（{decision.reason}）")
+        if subtasks:
+            print(f"  自造目标：{len(subtasks)} 个子任务（{'、'.join(s.name for s in subtasks)}）")
         print(f"  判据：{'、'.join(judge.names())}（均过三反例）")
+        if args.auto_org:
+            print(f"  自造编制：{'成功' if not org_error else '失败→回退单人'} "
+                  f"（{len(plan.roles)} 角色 / {len(plan.stages)} 阶段）")
+            if org_error:
+                print(f"      拒收原因：{org_error}")
         print(f"  派活 {report['dispatches']} 次，拒绝 {len(report['rejects'])} 次，"
               f"重做 {report['redone'] or '无'}")
         b = report["budget"] or {}

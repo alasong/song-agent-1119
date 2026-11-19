@@ -158,5 +158,19 @@ class LoopTest(unittest.TestCase):
         self.assertIn("缺章节", retries[0][2], "重做没带失败原因 = 盲重做")
 
 
+    def test_dangling_stage_gate_blocks_before_any_call(self):
+        """编制里的阶段门引用了没登记的判据：不许开工，一次调用都不发。"""
+        org = json.loads(ORG)
+        org["stages"][0]["gate_criteria"] = ["没登记的门"]
+        plan = fo.parse_plan("目标", json.dumps(org, ensure_ascii=False))
+        pdca = PDCA(make_judge(), Ledger(self.root / "l2.jsonl"), plan,
+                    self._produce(), fd.VOCAB)
+        report = pdca.run(self._decl())
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["dispatches"], 0)
+        self.assertEqual(self.calls, [])
+        self.assertTrue(any("未登记的判据" in p for p in report["problems"]), report["problems"])
+
+
 if __name__ == "__main__":
     unittest.main()

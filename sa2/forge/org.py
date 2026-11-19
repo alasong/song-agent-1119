@@ -54,7 +54,8 @@ class OrgPlan:
         return sum(len(s.roles) for s in self.stages)
 
 
-def parse_plan(goal: str, raw: str, budget_cap: int = 200_000) -> OrgPlan:
+def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
+               available_criteria=None) -> OrgPlan:
     match = re.search(r"\{.*\}", raw or "", re.S)
     if not match:
         raise OrgError("模型输出里没有 JSON")
@@ -112,6 +113,14 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000) -> OrgPlan:
             raise OrgError(f"阶段 {name} 没有阶段门：过不过谁说了算")
         stages.append(Stage(name, output, names, gates))
 
+    if available_criteria is not None:
+        known = set(available_criteria)
+        for stage in stages:
+            unknown = [g for g in stage.gate_criteria if g not in known]
+            if unknown:
+                raise OrgError(f"阶段 {stage.name} 的阶段门引用了未登记的判据：{unknown}"
+                               f"（可选：{sorted(known)}）")
+
     plan = OrgPlan(goal=goal, roles=tuple(roles), stages=tuple(stages))
     unassigned = [r.name for r in roles if not any(r.name in s.roles for s in stages)]
     if unassigned:
@@ -123,8 +132,8 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000) -> OrgPlan:
     return plan
 
 
-def plan_org(goal: str, llm, budget_cap: int = 200_000) -> OrgPlan:
-    prompt = f"""你是这个组织的 Super，负责搭班子。领导下达了一个目标，你要组一支能交付的团队。
+def _org_prompt(goal: str, budget_cap: int, criteria) -> str:
+    return f"""你是这个组织的 Super，负责搭班子。领导下达了一个目标，你要组一支能交付的团队。
 
 目标：{goal}
 
@@ -135,9 +144,28 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000) -> OrgPlan:
 - 每个角色给 token 预算，总和不超过 {budget_cap}
 - 2–4 个阶段；每个阶段必须写明：产出物 output、参与角色 roles（真子集，不是全体）、
   阶段门 gate_criteria（这一阶段按哪些判据算过）
-- 同一个角色不必出现在每个阶段；没关系就不要派
+- gate_criteria 只能从下面这些**已登记**判据里选，一个都不许自造（自造等于自己发毕业证）：
+  {list(criteria) or "（没有可用的判据，先让领导登记）"}
+- **每个角色至少要在某一个阶段的 roles 里出现一次**，没派活就别设这个角色
 
 只返回一个 JSON：
 {{"roles":[{{"name":"","kind":"","duty":"","criteria":"","budget":0}}],
   "stages":[{{"name":"","output":"","roles":[""],"gate_criteria":[""]}}]}}"""
-    return parse_plan(goal, llm([{"role": "user", "content": prompt}]), budget_cap)
+
+
+def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2) -> OrgPlan:
+    """生成编制。被自己的校验拒了就带着拒收原因重来一次——
+    不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。"""
+    prompt = _org_prompt(goal, budget_cap, criteria)
+    feedback = ""
+    last: OrgError | None = None
+    for _ in range(max(1, attempts)):
+        ask = prompt if not feedback else (
+            f"{prompt}\n\n上次这份编制被拒，原因：{feedback}\n请修正后重新输出完整 JSON。")
+        try:
+            return parse_plan(goal, llm([{"role": "user", "content": ask}]), budget_cap,
+                              available_criteria=criteria)
+        except OrgError as exc:
+            last = exc
+            feedback = str(exc)
+    raise last if last else OrgError("编制生成失败")

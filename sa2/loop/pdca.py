@@ -48,6 +48,15 @@ class PDCA:
             self.ledger.append("preflight_reject", "gate", {"problems": pre["problems"]})
             return self._report(False, "前置门未过", problems=pre["problems"])
 
+        # 编制的阶段门也必须落在已登记判据里，否则一跑就是注定红的空转
+        known = set(self.judge.names())
+        dangling = [f"{st.name}:{g}" for st in self.plan.stages
+                    for g in st.gate_criteria if g not in known]
+        if dangling:
+            problem = f"编制的阶段门引用了未登记的判据：{dangling}"
+            self.ledger.append("preflight_reject", "gate", {"problems": [problem]})
+            return self._report(False, "前置门未过", problems=[problem])
+
         budget = Budget(decl.budget_tokens, usage=self.usage if self.usage is not None else [])
         text = seed
         ran: set[str] = set()
