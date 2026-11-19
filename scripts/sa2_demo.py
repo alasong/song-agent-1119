@@ -29,6 +29,7 @@ from sa2.forge import criteria as forge_criteria  # noqa: E402
 from sa2.forge import dims as forge_dims          # noqa: E402
 from sa2.forge import goal as forge_goal          # noqa: E402
 from sa2.forge import org as forge_org            # noqa: E402
+from sa2.forge.scribe import Scribe               # noqa: E402
 from sa2.loop.pdca import PDCA                    # noqa: E402
 from sa2.memory.cases import CaseBook             # noqa: E402
 
@@ -60,21 +61,20 @@ SECTION_2 = "## 二、路径\n路径一：只改提示；路径二：改检索�
 SECTION_3 = "## 三、止损\n连续两轮无进展即停，并把失败案例入库。\n"
 
 
-class Scribe:
-    """确定性假模型：只有执行角色产正文；成稿第一次故意缺第三节。"""
+def fake_model(messages, max_tokens=1200):
+    """确定性假模型：按提示词内容决定产出，用来代替真实调用。
 
-    def __init__(self):
-        self.calls: list[tuple[str, str, int]] = []
-
-    def __call__(self, role, stage, upstream, attempt):
-        self.calls.append((role.name, stage, attempt))
-        if role.kind != "executor":
-            return ""                       # 规划出计划、验证只判，都不产正文
-        if stage == "起草":
-            return SECTION_1 + SECTION_2
-        if attempt == 1:
-            return SECTION_1 + SECTION_2    # 成稿第一次：缺第三节
+    注意它接的是**真的** `forge.scribe.Scribe`（提示词拼装、失败原因传递、verifier 不产正文
+    都走真实代码），只有「模型本身」是假的。
+    """
+    prompt = messages[0]["content"]
+    if "职责：拆目标与验收" in prompt:
+        return ""                                  # 规划出计划不产正文
+    if "## 当前阶段\n成稿" in prompt:
+        if "第 2 次尝试" not in prompt:
+            return SECTION_1 + SECTION_2           # 成稿第一次：缺第三节，应被阶段门拒
         return SECTION_1 + SECTION_2 + SECTION_3
+    return SECTION_1 + SECTION_2
 
 
 def runs_root() -> Path:
@@ -120,7 +120,8 @@ def main() -> int:
     judge_run1 = Judge(authority=("leader",), require_self_tested=True)
     for crit in tested:
         judge_run1.register(crit, proposer="leader")
-    pdca = PDCA(judge_run1, ledger, plan, Scribe(), forge_dims.VOCAB)
+    scribe = Scribe(fake_model)
+    pdca = PDCA(judge_run1, ledger, plan, scribe, forge_dims.VOCAB)
 
     # 第一跑：声明与阶段门都对，但证据给的是「见附件」——证据门必须红
     report1 = pdca.run(decl, evidence=["见附件"])
@@ -131,7 +132,7 @@ def main() -> int:
     judge_run2 = Judge(authority=("leader",), require_self_tested=True)
     for crit in tested:
         judge_run2.register(crit, proposer="leader")
-    pdca2 = PDCA(judge_run2, ledger, plan, Scribe(), forge_dims.VOCAB)
+    pdca2 = PDCA(judge_run2, ledger, plan, Scribe(fake_model), forge_dims.VOCAB)
     report2 = pdca2.run(decl, evidence=[f"{final}:1", f"dispatches={report1['dispatches']}"])
 
     for reject in report1["rejects"]:
@@ -171,7 +172,7 @@ def main() -> int:
         print(json.dumps({**readings, "ok": ok}, ensure_ascii=False, indent=2))
     else:
         p, r1 = readings["plan"], readings["run_without_evidence"]
-        print("sa 2.0 全环演示")
+        print("sa 2.0 全环演示（真 Scribe + 假模型）")
         print(f"  编制：{len(p['roles'])} 角色 / {len(p['stages'])} 阶段；编制层派活 "
               f"{p['dispatches']} 次（全连接会是 {p['cartesian']} 次）")
         print(f"  判据：{len(readings['criteria'])} 条，自测 {readings['self_test']}")

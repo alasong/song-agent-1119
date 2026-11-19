@@ -22,9 +22,15 @@ from ..forge.org import OrgPlan
 
 
 class PDCA:
-    def __init__(self, judge: Judge, ledger: Ledger, plan: OrgPlan, produce,
+    def __init__(self, judge: Judge, ledger: Ledger, plan: OrgPlan, produce: "callable",
                  vocab, usage: list[dict] | None = None,
                  max_stage_attempts: int = 2):
+        """produce(role, stage, upstream, attempt, feedback) -> str。
+
+        feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
+        带上它的理由很实际：sa 1.0 的整篇重写虽然也带反馈，但代价是整篇；
+        2.0 只重做一格，如果这一格不知道上次错在哪，等于把省下的钱又亏回去。
+        """
         self.judge = judge
         self.ledger = ledger
         self.plan = plan
@@ -48,6 +54,7 @@ class PDCA:
         dispatches = 0
 
         for stage in self.plan.stages:
+            feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
                 parts: list[str] = []
                 for role_name in stage.roles:
@@ -57,7 +64,7 @@ class PDCA:
                                             redone=redone, rejects=rejects,
                                             dispatches=dispatches, budget=budget)
                     role = self.plan.role(role_name)
-                    out = self.produce(role, stage.name, text, attempt)
+                    out = self.produce(role, stage.name, text, attempt, feedback)
                     budget.note(out)
                     dispatches += 1
                     self.ledger.append("dispatch", role_name,
@@ -76,6 +83,7 @@ class PDCA:
                     self.ledger.append("stage_ok", stage.name, {"attempt": attempt})
                     break
 
+                feedback = "；".join(problems)
                 rejects.append({"stage": stage.name, "attempt": attempt, "problems": problems})
                 self.ledger.append("reject", "stage_gate",
                                    {"stage": stage.name, "attempt": attempt, "problems": problems})

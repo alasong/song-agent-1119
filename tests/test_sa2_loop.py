@@ -51,7 +51,7 @@ class LoopTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _produce(self, fail_first_on=None):
-        def produce(role, stage, upstream, attempt):
+        def produce(role, stage, upstream, attempt, feedback=""):
             self.calls.append((role.name, stage, attempt))
             if role.kind != "executor":
                 return ""
@@ -93,7 +93,7 @@ class LoopTest(unittest.TestCase):
         self.assertTrue(report["passed"])
 
     def test_persistent_rejection_stops_and_names_the_stage(self):
-        def produce(role, stage, upstream, attempt):
+        def produce(role, stage, upstream, attempt, feedback=""):
             self.calls.append((role.name, stage, attempt))
             if role.kind != "executor":
                 return ""
@@ -111,7 +111,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_budget_stops_before_next_dispatch(self):
-        def produce(role, stage, upstream, attempt):
+        def produce(role, stage, upstream, attempt, feedback=""):
             self.calls.append((role.name, stage, attempt))
             return "x" * 400            # ≈100 tokens/次
 
@@ -137,6 +137,25 @@ class LoopTest(unittest.TestCase):
         self.assertIn("reject", kinds)
         self.assertIn("redo_stage", kinds)
         self.assertIn("delivery", kinds)
+
+
+    def test_redo_carries_the_reject_reason(self):
+        """重做必须知道上次错在哪，否则省下的整篇钱又亏回去。"""
+        seen = []
+
+        def produce(role, stage, upstream, attempt, feedback=""):
+            seen.append((stage, attempt, feedback))
+            if role.kind != "executor":
+                return ""
+            if stage == "成稿" and attempt == 1:
+                return f"{S1}\n{S2}\n"
+            return f"{S1}\n{S2}\n{S3}\n"
+
+        report = self._pdca(produce).run(self._decl())
+        self.assertTrue(report["passed"], report)
+        retries = [item for item in seen if item[1] == 2]
+        self.assertTrue(retries, "没有发生重做")
+        self.assertIn("缺章节", retries[0][2], "重做没带失败原因 = 盲重做")
 
 
 if __name__ == "__main__":
