@@ -36,6 +36,7 @@ from sa2.loop import size                         # noqa: E402
 from sa2.loop.pdca import PDCA                    # noqa: E402
 from sa2.memory import registry                   # noqa: E402
 from sa2.memory.cases import CaseBook             # noqa: E402
+from sa2.memory.tools import ToolStore            # noqa: E402
 from sa2.llm import complete_usage                # noqa: E402
 
 GOAL = "写一份「Agent 递归自我改进的最小可行实验」方案"
@@ -66,6 +67,19 @@ def _register(judge: Judge, specs) -> list[str]:
     return [c.name for c in specs]
 
 
+def shelve(store: ToolStore, path, crit, signature: str):
+    """把生成的脚本收进工具库，并把判据的 cmd 改指向库里的稳定地址。
+
+    不入库的检查器是「一次性的刀」：run 目录一清，注册表里那条判据的 `cmd`
+    就指向一个不存在的文件——真跑里那把断刀就是这么来的。
+    """
+    entry = store.store(path, name=crit.name, owner="leader", signature=signature,
+                        self_test={"ok": True, "cases": "生成时已跑过三反例"})
+    crit = replace(crit, spec={**crit.spec,
+                               "cmd": [sys.executable, entry["path"], "{target}"]})
+    return entry, crit
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -94,6 +108,8 @@ def main() -> int:
     run_dir = runs_root() / args.name / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     ledger = Ledger(run_dir / "ledger.jsonl")
+    # 造出来的东西要有家：工具进全局库（不随 run 目录消失），判据的 cmd 指向库里
+    tool_store = ToolStore()
 
     if args.fresh:
         judge = Judge(authority=("leader",), path=run_dir / "criteria.json",
@@ -171,9 +187,10 @@ def main() -> int:
 
         delivery_specs = [fc.tested(fc.propose_sections("交付·章节", heads, dims))]
         try:
-            _, full_tool = ft.checker_from_sections(sample, run_dir / "tools",
-                                                    name="delivery-sections",
-                                                    allow_foreign=False)
+            raw, full_tool = ft.checker_from_sections(sample, run_dir / "tools",
+                                                      name="delivery-sections",
+                                                      allow_foreign=False)
+            _, full_tool = shelve(tool_store, raw, full_tool, "<script> <target.md> → rc0/1")
             delivery_specs.append(fc.replace(full_tool, name="交付·正文下限", scope="delivery"))
         except ValueError as exc:
             notes["delivery_checker_fallback"] = str(exc)
@@ -187,10 +204,11 @@ def main() -> int:
             specs = [fc.tested(fc.replace(
                 fc.propose_sections(f"{stage.name}·章节", chunk, dims), scope="stage"))]
             try:
-                _, tool = ft.checker_from_sections(
+                raw, tool = ft.checker_from_sections(
                     piece, run_dir / "tools", name=f"stage-{stage.name}-sections",
                     # 第一个阶段从零写，越界就是错；后面的阶段是追加，上游章节合法。
                     allow_foreign=(order > 0))
+                _, tool = shelve(tool_store, raw, tool, "<script> <target.md> → rc0/1")
                 specs.append(fc.replace(tool, name=f"{stage.name}·正文下限", scope="stage"))
             except ValueError as exc:
                 notes[f"checker_fallback:{stage.name}"] = str(exc)
@@ -263,13 +281,15 @@ def main() -> int:
         try:
             tool_path_obj, tool_crit = ft.generate_checker(
                 goal, required, llm, run_dir / "tools", name="stage1_checker")
+            entry, tool_crit = shelve(tool_store, tool_path_obj, tool_crit,
+                                      "<script> <target.md> → rc0/1")
             judge.register(tool_crit, proposer="leader")
             first = plan.stages[0]
             plan = fo.attach_stage_gates(plan, {
                 **{st.name: st.gate_criteria for st in plan.stages},
                 first.name: tuple(first.gate_criteria) + (tool_crit.name,),
             })
-            tool_path = str(tool_path_obj)
+            tool_path = entry["path"]
         except (ValueError, OSError) as exc:
             tool_error = str(exc)
 
