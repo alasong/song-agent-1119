@@ -34,11 +34,14 @@ SPEC = """实现 xm/retry.py：
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rounds", type=int, default=8)
+    ap.add_argument("--model", default="deepseek-chat")
+    ap.add_argument("--out", default="reports/m0b4.json")
+    ap.add_argument("--ledger", default="reports/m0b4_ledger.jsonl")
     args = ap.parse_args()
 
     out = Path("reports")
     out.mkdir(exist_ok=True)
-    ledger = Ledger(out / "m0b4_ledger.jsonl")
+    ledger = Ledger(args.ledger)
     cfg = DaemonConfig(
         spec=SPEC,
         target_file="xm/retry.py",
@@ -46,11 +49,13 @@ def main() -> int:
         max_rounds=args.rounds,
         patience=3,
     )
-    daemon = Daemon(ledger, complete, cfg)
+    llm = lambda messages: complete(messages, model=args.model)
+    daemon = Daemon(ledger, llm, cfg)
     summary = daemon.run()
     summary["experiment"] = "M0b-4"
+    summary["model"] = args.model
     summary["driver"] = "none（启动后无人工介入）"
-    (out / "m0b4.json").write_text(
+    Path(args.out).write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))

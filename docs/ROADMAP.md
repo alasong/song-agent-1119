@@ -131,4 +131,4 @@ L2+ 元治理、强校验（形式化验证）、物理世界接口、AI 版自�
 | 设计文档 v2.1（含激励层） | 完成 | 设计文档 §15、§16 |
 | ROADMAP v1 | 完成 | 本文件 |
 | M0a 测量仪 | 完成 | `python3 -m unittest discover -s tests -t .` 17 绿；反例测试在 `XM_DISABLE_LIVENESS=1` 下变红；读数见 `reports/m0a.json` |
-| M0b-4 无人值守 | 完成 | 打通模型通道（运行进程 env 里的 DS key），daemon 自跑 2 轮：第 1 轮红→自动返工→绿，`green_at_round=2`，启动后无人工介入（`reports/m0b4.json`）|
+| M0b-4 无人值守 | 完成 | daemon 自跑：`deepseek-chat` 2 轮转绿、`deepseek-flash` 2 轮转绿（两者第 1 轮同样因 `test_bad_config` 失败），启动后无人工介入（`m0b4.json` / `m0b4-flash.json`）|

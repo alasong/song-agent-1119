@@ -6,13 +6,14 @@ class RetrierError(Exception):
 
 
 class Retrier:
-    def __init__(self, max_attempts: int, base: float = 1.0, factor: float = 2.0, sleep=time.sleep):
+    def __init__(self, max_attempts: int, base: float = None, factor: float = 2.0, sleep=time.sleep):
         if max_attempts < 1:
-            raise RetrierError("max_attempts must be >= 1")
-        if base <= 0:
-            raise RetrierError("base must be > 0")
+            raise RetrierError("max_attempts must be at least 1")
+        if base is None or base <= 0:
+            raise RetrierError("base must be greater than 0")
         if factor <= 1:
-            raise RetrierError("factor must be > 1")
+            raise RetrierError("factor must be greater than 1")
+
         self.max_attempts = max_attempts
         self.base = base
         self.factor = factor
@@ -22,9 +23,10 @@ class Retrier:
         return [self.base * (self.factor ** i) for i in range(self.max_attempts)]
 
     def run(self, fn):
-        delays = self.delays()
         self.attempts = 0
+        delays = self.delays()
         last_exc = None
+
         for i in range(self.max_attempts):
             self.attempts += 1
             try:
@@ -33,4 +35,5 @@ class Retrier:
                 last_exc = exc
                 if i < self.max_attempts - 1:
                     self.sleep(delays[i])
+
         raise last_exc

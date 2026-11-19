@@ -1,0 +1,10 @@
+{
+  "green_at_round": 2,
+  "rounds_used": 2,
+  "final_rc": 0,
+  "no_progress_peak": 1,
+  "ledger_events": 8,
+  "experiment": "M0b-4",
+  "model": "deepseek-flash",
+  "driver": "none（启动后无人工介入）"
+}
