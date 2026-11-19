@@ -31,7 +31,7 @@ class Scheduler:
         sched.plan = plan
         return sched
 
-    def run(self, plan: dict | None = None) -> dict:
+    def run(self, plan: dict | None = None, worker=None) -> dict:
         plan = plan or getattr(self, "plan", None)
         if not plan:
             raise ValueError("没有编制方案可派")
@@ -40,19 +40,43 @@ class Scheduler:
         if not roles or not process:
             raise ValueError("编制方案缺 roles 或 process")
 
+        upstream: dict | None = None
+        artifacts: list[dict] = []
         for stage in process:
             for role in roles:
                 self.ledger.append("dispatch", "scheduler", {
                     "stage": stage, "role": role["name"], "kind": role["kind"],
                 })
                 self.dispatch_log.append(Dispatch(stage, role["name"], role["kind"]))
-                self.ledger.append("progress", role["name"], {"stage": stage})
+
+                # 干活 + 交接：产物必须带上游 id，否则链路是断的
+                if worker is not None:
+                    artifact = worker(role, stage, upstream)
+                else:
+                    artifact = {
+                        "id": f"{stage}:{role['name']}",
+                        "upstream": upstream["id"] if upstream else None,
+                        "stage": stage,
+                        "role": role["name"],
+                    }
+                artifacts.append(artifact)
+                self.ledger.append("progress", role["name"],
+                                   {"stage": stage, "artifact": artifact.get("id"),
+                                    "upstream": artifact.get("upstream")})
+                upstream = artifact
+
+        chain_ok = all(
+            artifacts[i].get("upstream") == artifacts[i - 1].get("id")
+            for i in range(1, len(artifacts))
+        ) and len(artifacts) > 1
 
         kinds = {d.kind for d in self.dispatch_log}
         names = {d.role for d in self.dispatch_log}
         return {
             "stages": len(process),
             "dispatches": len(self.dispatch_log),
+            "handoffs": max(0, len(artifacts) - 1),
+            "chain_ok": chain_ok,
             "distinct_roles": len(names),
             "distinct_kinds": len(kinds),
             "has_verifier": "verifier" in kinds,

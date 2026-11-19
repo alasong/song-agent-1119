@@ -37,6 +37,29 @@ class SchedulerTest(unittest.TestCase):
         self.assertEqual(self.led.count("dispatch"), 6)
         self.assertEqual(self.led.count("progress"), 6)
 
+    def test_handoff_chain_is_intact(self):
+        stats = Scheduler(self.led).run(PLAN)
+        self.assertTrue(stats["chain_ok"])
+        self.assertEqual(stats["handoffs"], 5)
+
+    def test_broken_worker_breaks_chain(self):
+        def bad_worker(role, stage, upstream):
+            return {"id": f"{stage}:{role['name']}"}  # 故意丢 upstream
+
+        stats = Scheduler(self.led).run(PLAN, worker=bad_worker)
+        self.assertFalse(stats["chain_ok"])
+
+    def test_worker_receives_upstream(self):
+        seen = []
+
+        def worker(role, stage, upstream):
+            seen.append(upstream["id"] if upstream else None)
+            return {"id": f"{stage}:{role['name']}", "upstream": upstream["id"] if upstream else None}
+
+        Scheduler(self.led).run(PLAN, worker=worker)
+        self.assertIsNone(seen[0])
+        self.assertEqual(seen[1], "拆解:拆解者")
+
     def test_missing_plan_raises(self):
         with self.assertRaises(ValueError):
             Scheduler(self.led).run({"roles": [], "process": []})

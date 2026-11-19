@@ -36,15 +36,16 @@ def g1_autonomy() -> dict:
 def g2_organization() -> dict:
     scheduler = _has("xm/scheduler.py")
     records = sorted((ROOT / "reports").glob("scheduler-*.json"))
-    best = 0
-    if records:
-        latest = json.loads(records[-1].read_text(encoding="utf-8"))
-        best = latest.get("distinct_roles", 0)
-    ok = scheduler and best >= 3
+    latest = json.loads(records[-1].read_text(encoding="utf-8")) if records else {}
+    roles = latest.get("distinct_roles", 0)
+    chain_ok = bool(latest.get("chain_ok"))
+    handoffs = latest.get("handoffs", 0)
+    ok = scheduler and roles >= 3 and chain_ok and handoffs >= 3
     return {
         "passed": ok,
-        "evidence": f"调度器={'有' if scheduler else '无'}；最近一次派活覆盖角色数={best}",
-        "next": "按 OrgPlan 派活给 ≥3 个不同角色，并把记录落到 reports/scheduler-*.json",
+        "evidence": f"调度器={'有' if scheduler else '无'}；覆盖角色={roles}；"
+                    f"交接次数={handoffs}；交接链完整={chain_ok}",
+        "next": "派活必须真的产出并交给下游：产物带上游 id，断链即判红",
     }
 
 
