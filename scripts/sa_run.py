@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from xm.llm import complete
+from xm.llm import complete_usage
 from xm.sa_task import run
 from xm.paths import runs_root
 
@@ -32,12 +32,27 @@ def main() -> int:
         print(json.dumps({"error": f"{task_dir} 里没有 task.json"}, ensure_ascii=False))
         return 2
 
-    llm = lambda messages, max_tokens=2000: complete(
-        messages, model=args.model, max_tokens=max_tokens,
-        extra={"thinking": {"type": "disabled"}},
-    )
+    usages: list[dict] = []
+
+    def llm(messages, max_tokens=2000):
+        text, usage = complete_usage(
+            messages, model=args.model, max_tokens=max_tokens,
+            extra={"thinking": {"type": "disabled"}})
+        usages.append(usage or {})
+        return text
+
     report = run(args.goal, task_dir, llm, rounds=args.rounds,
                  max_roles=args.max_roles, max_stages=args.max_stages)
+
+    hit = sum(u.get("prompt_cache_hit_tokens", 0) or 0 for u in usages)
+    miss = sum(u.get("prompt_cache_miss_tokens", 0) or 0 for u in usages)
+    report["cache"] = {
+        "calls": len(usages),
+        "prompt_tokens": hit + miss,
+        "cache_hit": hit,
+        "cache_miss": miss,
+        "hit_ratio": round(hit / (hit + miss), 4) if hit + miss else 0.0,
+    }
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["passed"] else 1
 

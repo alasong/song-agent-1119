@@ -74,10 +74,16 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3,
     collected: list[dict] = []
 
     def worker(role, stage, upstream):
-        prompt = f"""你是「{role['name']}」，职责：{role['duty']}
-你的验收方式：{role['criteria']}
+        # 缓存友好：所有角色共用的规格放在最前面（前缀可复用），易变内容放后面
+        prompt = f"""## 任务规格（所有角色共用，判据按它判）
+{spec}
 
-组织正在完成的总体目标：{goal}
+## 组织目标
+{goal}
+
+## 你的角色
+你是「{role['name']}」，职责：{role['duty']}
+你的验收方式：{role['criteria']}
 
 当前阶段：{stage}
 上游交付：
