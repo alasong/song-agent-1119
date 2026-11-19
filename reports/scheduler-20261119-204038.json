@@ -1,0 +1,27 @@
+{
+  "ts": "2026-11-19T20:40:38",
+  "plan": "/Users/song/xm-runs/org/20261119-203750.json",
+  "goal": "如何做 Agent 的 RSI（递归自我改进）",
+  "purpose": "acceptance",
+  "stages": 2,
+  "dispatches": 12,
+  "handoffs": 13,
+  "reworks": 2,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "verdicts": 2,
+  "verdict_pass": 0,
+  "verdict_reject": 2,
+  "sample_artifact": "阶段2归档交付物：\n- 方案档案：SP-02-CANDIDATE-MECHANISM-v0.1（含候选机制、实验方案）\n- 评审记录：RV-02-EXPERT-v0.1（结论：reject；风险项：缺评测套件运行结果、关键指标复现证据、验证",
+  "distinct_role_names": [
+    "Agent 实现工程师",
+    "RSI 目标规划师",
+    "改进机制研究员",
+    "独立验证员",
+    "知识资产管理员",
+    "领域专家"
+  ]
+}

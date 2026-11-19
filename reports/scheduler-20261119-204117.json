@@ -1,0 +1,27 @@
+{
+  "ts": "2026-11-19T20:41:17",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "goal": "把 M1 装配层（xm/app.py）实现合入，并让端到端闭环跑通、可回归",
+  "purpose": "acceptance",
+  "stages": 2,
+  "dispatches": 12,
+  "handoffs": 13,
+  "reworks": 2,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "verdicts": 2,
+  "verdict_pass": 0,
+  "verdict_reject": 2,
+  "sample_artifact": "**装配层技术裁决（返工）**\n\n1. **裁决**：上游驳回成立。装配层交付须含可执行装配脚本与端到端用例，文档/配置不计入闭环证据。\n2. **边界条件**：干净环境仅允许基础运行时；装配入口单命令可跑；失败须输出非零退出码与日志。\n3",
+  "distinct_role_names": [
+    "代码与资产整理员",
+    "回归用例设计者",
+    "接口契约研究员",
+    "独立验证员",
+    "装配实现工程师",
+    "装配领域专家"
+  ]
+}

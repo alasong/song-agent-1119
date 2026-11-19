@@ -26,6 +26,8 @@ def main() -> int:
     ap.add_argument("--llm", action="store_true", help="用真模型扮演角色（默认 stub）")
     ap.add_argument("--roles", type=int, default=0, help="只用前 N 个角色（0=全部）")
     ap.add_argument("--stages", type=int, default=0, help="只用前 N 个阶段（0=全部）")
+    ap.add_argument("--purpose", default="acceptance", choices=["acceptance", "experiment"],
+                    help="experiment=收缩/对照实验，不参与验收判定")
     args = ap.parse_args()
 
     plan_path = Path(args.plan).expanduser().resolve()
@@ -35,6 +37,7 @@ def main() -> int:
 
     scheduler = Scheduler.from_plan_file(plan_path, ledger)
     plan = scheduler.plan
+    goal = str(plan.get("goal") or "").strip()
     if args.roles:
         plan["roles"] = plan["roles"][:args.roles]
     if args.stages:
@@ -73,6 +76,8 @@ def main() -> int:
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "plan": str(plan_path),
+        "goal": goal,
+        "purpose": args.purpose,
         **stats,
         "distinct_role_names": sorted({d.role for d in scheduler.dispatch_log}),
     }
