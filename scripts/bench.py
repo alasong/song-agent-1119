@@ -119,16 +119,21 @@ def g5_stability() -> dict:
 
 
 def g6_cost() -> dict:
-    # 判据不是「文件里有字段」，而是「预算超了真的会停」——用测试证明
+    # 判据：预算超了真的会停（测试证明）+ 记账用的是模型返回的真实 usage（运行记录证明）
     proc = subprocess.run(
         [sys.executable, "-m", "unittest", "tests.test_budget", "-q"],
         cwd=ROOT, capture_output=True, text=True,
     )
-    ok = proc.returncode == 0
+    unit_ok = proc.returncode == 0
+    records = sorted((ROOT / "reports").glob("usage-*.json"))
+    latest = json.loads(records[-1].read_text(encoding="utf-8")) if records else {}
+    exact_ok = bool(latest.get("passed"))
     return {
-        "passed": ok,
-        "evidence": "预算止损测试 " + ("通过" if ok else "未通过"),
-        "next": "daemon 记账必须有 budget_tokens/spent_tokens/stopped_by_budget，且超支即停",
+        "passed": unit_ok and exact_ok,
+        "evidence": "预算止损测试 " + ("通过" if unit_ok else "未通过")
+                    + f"；真实用量记账轮数={latest.get('exact_usage_rounds', 0)}"
+                    + f"，实耗={latest.get('spent_tokens', '-')} tokens",
+        "next": "记账必须用模型返回的真实 usage，超支即止",
     }
 
 
