@@ -69,17 +69,18 @@ def g4_knowledge() -> dict:
     if not _has("xm/kb.py"):
         return {"passed": False, "evidence": "知识底座不存在",
                 "next": "写 xm/kb.py：检索 + 只收已验证事实；接一个领域源做端到端"}
-    records = sorted((ROOT / "reports").glob("kb-demo-*.json"))
+    records = sorted((ROOT / "reports").glob("kb-fetch-*.json"))
     if not records:
-        return {"passed": False, "evidence": "有底座但没有跨领域演示记录",
-                "next": "跑 scripts/kb_demo.py：两个领域各检索到事实，且不改代码"}
+        return {"passed": False, "evidence": "只有手写演示，没有真实获取记录",
+                "next": "跑 scripts/kb_fetch_demo.py：从公开源取两个领域并入底座"}
     latest = json.loads(records[-1].read_text(encoding="utf-8"))
-    ok = bool(latest.get("passed")) and len(latest.get("domains", [])) >= 2
+    ok = bool(latest.get("passed"))
+    per = latest.get("per_domain", {})
     return {
         "passed": ok,
-        "evidence": f"跨领域演示：{len(latest.get('domains', []))} 个领域，"
-                    f"每领域命中={[v['count'] for v in latest.get('per_domain', {}).values()]}",
-        "next": "两个领域各检索到事实，且换领域不改代码",
+        "evidence": "真实获取：" + "，".join(
+            f"{d} 取{v.get('stored', 0)}条" for d, v in per.items()),
+        "next": "两个领域各取到 ≥2 条带 URL 证据的事实，且换领域不改代码",
     }
 
 
