@@ -1,0 +1,8 @@
+{"seq": 1, "ts": 1795076530.04949, "kind": "dispatch", "actor": "daemon", "payload": {"round": 1}}
+{"seq": 2, "ts": 1795076573.417613, "kind": "submission", "actor": "daemon", "payload": {"round": 1, "bytes": 3948}}
+{"seq": 3, "ts": 1795076573.486854, "kind": "test_result", "actor": "daemon", "payload": {"round": 1, "rc": 1}}
+{"seq": 4, "ts": 1795076573.48714, "kind": "rejected", "actor": "daemon", "payload": {"round": 1, "reason": "FAIL: test_counter_conditions_at_least_two (tests.test_analysis.AnalysisTest.test_counter_conditions_at_least_two)"}}
+{"seq": 5, "ts": 1795076573.487277, "kind": "dispatch", "actor": "daemon", "payload": {"round": 2}}
+{"seq": 6, "ts": 1795076586.727371, "kind": "submission", "actor": "daemon", "payload": {"round": 2, "bytes": 3943}}
+{"seq": 7, "ts": 1795076586.785878, "kind": "test_result", "actor": "daemon", "payload": {"round": 2, "rc": 0}}
+{"seq": 8, "ts": 1795076586.786387, "kind": "completed", "actor": "daemon", "payload": {"round": 2}}

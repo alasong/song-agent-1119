@@ -21,6 +21,7 @@ class DaemonConfig:
     tests: list[str]
     max_rounds: int = 8
     patience: int = 3
+    fence_lang: str = "python"
 
 
 class Daemon:
@@ -57,11 +58,11 @@ class Daemon:
 ```
 {simplify}
 ## 输出要求
-只返回一个 ```python 代码块，内容是 {self.cfg.target_file} 的完整最终代码。
+只返回一个 ```{self.cfg.fence_lang} 代码块，内容是 {self.cfg.target_file} 的完整最终内容。
 不要写解释，不要写多个代码块，不要省略任何已有功能。"""
 
     def _parse(self, text: str) -> str | None:
-        blocks = re.findall(r"```(?:python)?\s*\n(.*?)```", text, re.S)
+        blocks = re.findall(r"```[a-zA-Z]*\s*\n(.*?)```", text, re.S)
         if not blocks:
             return None
         return max(blocks, key=len)
@@ -87,8 +88,13 @@ class Daemon:
             block = self._parse(raw)
             if block is None:
                 self.no_progress += 1
-                self.ledger.append("parse_failure", "daemon", {"round": rnd})
-                self.last_output = "上一轮没有给出代码块，请严格按格式只返回一个 ```python 代码块。"
+                # 记下长度与头部：否则「模型没吐内容」会被误判成「格式不对」
+                self.ledger.append("parse_failure", "daemon",
+                                   {"round": rnd, "raw_len": len(raw), "head": raw[:80]})
+                self.last_output = (
+                    f"上一轮没有给出代码块（模型返回长度 {len(raw)}）。"
+                    f"请严格按格式只返回一个 ```{self.cfg.fence_lang} 代码块。"
+                )
                 continue
 
             target = self.ws / self.cfg.target_file
