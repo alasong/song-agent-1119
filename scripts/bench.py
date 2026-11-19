@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -148,6 +149,10 @@ CHECKS = [
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--json", action="store_true", help="只输出机器可读结果")
+    args = ap.parse_args()
+
     rows = []
     for name, fn in CHECKS:
         try:
@@ -169,6 +174,10 @@ def main() -> int:
     out.mkdir(exist_ok=True)
     path = out / f"bench-{time.strftime('%Y%m%d-%H%M%S')}.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if passed == len(rows) else 1
 
     for r in rows:
         mark = "PASS" if r["passed"] else "FAIL"
