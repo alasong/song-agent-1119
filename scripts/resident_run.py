@@ -69,6 +69,7 @@ def main() -> int:
     ap.add_argument("--hours", type=float, default=24)
     ap.add_argument("--interval", type=float, default=600)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--resume", action="store_true", help="从检查点继续累计已跑时长")
     args = ap.parse_args()
 
     out_dir = runs_root() / "resident"
@@ -76,9 +77,14 @@ def main() -> int:
     ledger = Ledger(out_dir / f"ledger-{time.strftime('%Y%m%d-%H%M%S')}.jsonl")
     checkpoint = out_dir / "checkpoint.json"
 
+    already = 0.0
+    if args.resume and checkpoint.exists():
+        already = float(json.loads(checkpoint.read_text(encoding="utf-8")).get("running_hours", 0))
+        print(json.dumps({"resume_from_hours": already}, ensure_ascii=False))
+
     resident = Resident(ledger, make_policy(),
                         ResidentConfig(interval_s=args.interval, max_hours=args.hours,
-                                       checkpoint=checkpoint))
+                                       checkpoint=checkpoint, already_elapsed_h=already))
     summary = resident.run()
 
     report = {

@@ -22,6 +22,7 @@ class ResidentConfig:
     max_hours: float = 24
     max_ticks: int | None = None
     checkpoint: Path | None = None
+    already_elapsed_h: float = 0.0
 
 
 @dataclass
@@ -31,6 +32,9 @@ class Resident:
     cfg: ResidentConfig
     state: dict = field(default_factory=dict)
     history: list[dict] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.session_start = time.time()
 
     def tick(self) -> dict:
         name, task = self.policy(self.state)
@@ -56,7 +60,10 @@ class Resident:
         if not self.cfg.checkpoint:
             return
         self.cfg.checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        running_h = round(self.cfg.already_elapsed_h
+                          + (time.time() - self.session_start) / 3600, 4)
         self.cfg.checkpoint.write_text(json.dumps({
+            "running_hours": running_h,
             "ticks": len(self.history),
             "progress_tasks": self.state.get("progress_tasks", 0),
             "last": self.history[-1] if self.history else None,
@@ -64,7 +71,8 @@ class Resident:
 
     def run(self) -> dict:
         started = time.time()
-        deadline = started + self.cfg.max_hours * 3600
+        remaining_h = max(0.0, self.cfg.max_hours - self.cfg.already_elapsed_h)
+        deadline = started + remaining_h * 3600
         ticks = 0
         while time.time() < deadline:
             if self.cfg.max_ticks is not None and ticks >= self.cfg.max_ticks:
@@ -74,7 +82,7 @@ class Resident:
             if time.time() + self.cfg.interval_s > deadline:
                 break
             time.sleep(self.cfg.interval_s)
-        elapsed_hours = round((time.time() - started) / 3600, 4)
+        elapsed_hours = round(self.cfg.already_elapsed_h + (time.time() - started) / 3600, 4)
         return {
             "hours": elapsed_hours,
             "ticks": ticks,

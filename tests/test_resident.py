@@ -52,6 +52,19 @@ class ResidentTest(unittest.TestCase):
         self.assertEqual(summary["progress_tasks"], 0)
         self.assertIn("RuntimeError", r.history[0]["result"]["error"])
 
+    def test_resume_counts_already_elapsed(self):
+        clock = {"t": 0.0}
+        r = Resident(self.led, policy, ResidentConfig(interval_s=0, max_hours=1, max_ticks=1,
+                                                      already_elapsed_h=0.5))
+        summary = r.run()
+        self.assertGreaterEqual(summary["hours"], 0.5)
+
+    def test_full_elapsed_means_no_waiting(self):
+        r = Resident(self.led, policy, ResidentConfig(max_hours=1, already_elapsed_h=1.0))
+        summary = r.run()
+        self.assertEqual(summary["ticks"], 0)
+        self.assertGreaterEqual(summary["hours"], 1.0)
+
     def test_max_hours_respected(self):
         r = Resident(self.led, policy, ResidentConfig(interval_s=1, max_hours=0.0001))
         summary = r.run()
