@@ -1,4 +1,4 @@
-"""HR 层：拿到目标，自己组队、定流程、分预算。
+"""Super 层（组队）：拿到目标，自己组队、定流程、分预算。
 
 约束：
 - 角色方案必须可机检：每个角色要有职责（只负责什么）和判据（怎么判它干得好）
@@ -83,7 +83,7 @@ def parse_plan(goal: str, raw: str, budget_cap: int) -> OrgPlan:
 
 
 def plan_org(goal: str, llm, budget_cap: int = 200_000) -> OrgPlan:
-    prompt = f"""你是这个组织的 HR。领导下达了一个目标，你要组一支能交付的团队。
+    prompt = f"""你是这个组织的 Super，负责搭班子。领导下达了一个目标，你要组一支能交付的团队。
 
 目标：{goal}
 

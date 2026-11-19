@@ -21,7 +21,7 @@ GOOD_DOC = "## 一\n内容\n## 二\n内容\n"
 
 def fake_llm(messages, max_tokens=2000):
     prompt = messages[0]["content"]
-    if "HR" in prompt or "组一支" in prompt:
+    if "Super" in prompt or "组一支" in prompt:
         return PLAN
     if "整合成一份完整" in prompt:
         return GOOD_DOC

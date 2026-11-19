@@ -1,4 +1,4 @@
-"""HR 组队方案的校验验收（不调模型）。"""
+"""Super 组队方案的校验验收（不调模型）。"""
 import json
 import unittest
 

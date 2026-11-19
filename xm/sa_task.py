@@ -35,7 +35,7 @@ def run(goal: str, task_dir: Path, llm, rounds: int = 3) -> dict:
     check = task_dir / task.get("check", "check.py")
     deliverable = run_dir / "deliverable.md"
 
-    # ① HR：目标 → 编制
+    # ① Super：目标 → 编制
     plan = plan_org(goal, lambda m: llm(m, max_tokens=2000), budget_cap=200_000)
     ledger.append("org_plan", "hr", {
         "goal": goal,

@@ -40,7 +40,7 @@
 | 对象 | 谁写 | 关键字段 | 不可变点 |
 |---|---|---|---|
 | `Goal` | 领导 | 目标、验收期望、预算上限、截止时间 | 下发后不可改，只能新增子目标 |
-| `Role` | HR（L1） | name、kind、duty、criteria、budget | 方案定稿后不可改；换人要新方案 |
+| `Role` | Super（L1 组队） | name、kind、duty、criteria、budget | 方案定稿后不可改；换人要新方案 |
 | `Ticket` | 调度（L2） | id、sender、receiver、goal、evidence | 一旦提交只能追加状态，不能改内容 |
 | `Criteria` | 专家 + 独立审批 | 名称、版本、检查方式（可执行）、阈值 | 生成方不能改；升格要过校准 |
 | `Artifact` | 执行方 | 产物、证据链、判据版本、成本 | 只增不改 |
