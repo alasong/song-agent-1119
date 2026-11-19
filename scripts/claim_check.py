@@ -2,8 +2,9 @@
 
 只做两条，能说清才能被执行：
 
-1. **裸称「最优」**：正文里出现未加引号的「最优」，同一行必须给出 L0–L3 级别，
-   或候选集/预算/差值之一。讨论这个词本身（引号里、代码块里）不算声称。
+1. **裸称「最优」且没有读数**：正文里出现未加引号的「最优」，同一行必须带一个真实读数
+   （`1 次`、`32 次`、`6/15`、`9 处` 这种「数字 + 单位」）。只写「候选集内最优」「依据很充分」
+   不算——那正是套路的形状：借论证的词汇，不给可核对的数。引号里、代码块里讨论这个词不算声称。
    理由：`docs/OPTIMALITY.md` 已判定「最优」不可证，正文还裸着用，就是把修辞当结论。
 2. **自说自话**：`reports/bench-*.json` 里的 `verdict` 必须与 `passed/total` 相符。
    一份报告说自己「够了」但只过了 5/6，判红——自己给自己发奖状正是这条规则要防的。
@@ -21,11 +22,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 LEVELS = ("L0", "L1", "L2", "L3")
-QUALIFIERS = ("候选集", "预算", "差值")
 BARE = "最优"
 QUOTED = re.compile(r"「[^」]*」|“[^”]*”|\"[^\"]*\"|`[^`]*`")
 FENCE = re.compile(r"^\s*```")
 CERTAIN = ("已经完全验证", "已证明最优", "保证最优", "绝对正确")
+# 读数：数字 + 单位。没有读数的「最优」= 借论证的词汇，不给可核对的数
+READING = re.compile(r"\d+(?:\.\d+)?\s*(?:次|个|条|分|%|tokens|小时|轮|处|行|人)")
 
 
 def _strip_quotes(line: str) -> str:
@@ -44,10 +46,10 @@ def scan_text(path: Path) -> list[dict]:
             continue
         bare = _strip_quotes(line)
         if BARE in bare:
-            if not any(k in line for k in LEVELS + QUALIFIERS):
+            if not READING.search(line):
                 problems.append({"file": str(path), "line": lineno, "kind": "bare-optimal",
                                  "text": line.strip()[:120],
-                                 "why": "裸称「最优」却没有 L 级别或候选集/预算/差值"})
+                                 "why": "称「最优」却没有读数（数字+单位）——只给词不给数，就是凑"})
         for word in CERTAIN:
             if word in bare:
                 problems.append({"file": str(path), "line": lineno, "kind": "certainty",

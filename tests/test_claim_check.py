@@ -57,9 +57,21 @@ class BareOptimalTest(unittest.TestCase):
         self.write("docs/x.md", "结论：候选集内 L1 占优（候选 3 个）。\n")
         self.assertEqual(run_checker(self.root)["rc"], 0)
 
-    def test_candidate_set_qualifier_makes_it_pass(self):
-        self.write("docs/x.md", "只在这三个候选集内是最优的。\n")
+    def test_ritual_sentence_without_numbers_is_red(self):
+        """「候选集内最优」这种空话必须判红——它借了论证的词，没给可核对的数。"""
+        self.write("docs/x.md", "本方案在候选集内最优。\n")
+        result = run_checker(self.root)
+        self.assertEqual(result["rc"], 1)
+        self.assertEqual(result["problems"][0]["kind"], "bare-optimal")
+
+    def test_claim_with_reading_passes(self):
+        self.write("docs/x.md", "候选 3 个，选中方案少 2 次调用，L1 占优。\n")
         self.assertEqual(run_checker(self.root)["rc"], 0)
+
+    def test_candidate_set_word_alone_no_longer_passes(self):
+        """这一条是补丁的回归：只写「候选集」不给数，必须仍然判红。"""
+        self.write("docs/x.md", "结论：候选集内最优，预算充足，差值另附。\n")
+        self.assertEqual(run_checker(self.root)["rc"], 1)
 
     def test_overclaim_words_are_red(self):
         self.write("docs/x.md", "这项能力已经完全验证。\n")
