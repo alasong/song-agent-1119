@@ -1,0 +1,41 @@
+{
+  "ts": "2026-11-19T20:25:26",
+  "task": "/Users/song/xm-runs/2026-11-19-rsi",
+  "A_single_agent": {
+    "passed": true,
+    "rounds": 3,
+    "chars": 3240,
+    "calls": 3,
+    "prompt_tokens": 1361,
+    "completion_tokens": 5919,
+    "cache_hit": 256,
+    "hit_ratio": 0.1881,
+    "artifact": "/Users/song/xm-runs/ab/single-20261119-202404/rsi.md"
+  },
+  "B_sa_org": {
+    "passed": true,
+    "rounds": 1,
+    "chars": 3543,
+    "calls": 5,
+    "prompt_tokens": 4006,
+    "completion_tokens": 3802,
+    "cache_hit": 512,
+    "hit_ratio": 0.1278,
+    "artifact": "/Users/song/xm-runs/2026-11-19-rsi/sa-run-20261119-202456/deliverable.md"
+  },
+  "better": {
+    "A": [
+      "calls",
+      "prompt_tokens"
+    ],
+    "B": [
+      "rounds",
+      "chars",
+      "completion_tokens"
+    ],
+    "tie": [
+      "passed"
+    ]
+  },
+  "verdict": "互有胜负，无 Pareto 占优"
+}
