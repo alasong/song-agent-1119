@@ -1,0 +1,33 @@
+{
+  "experiment": "M0b-3",
+  "task": "新建 xm/metrics.py 与 xm/pipeline.py，8 条验收测试；任务书不提示盲区",
+  "arms": {
+    "A_org": {
+      "round1": "pass 8/8",
+      "injected": "xm/metrics.py trend 恒 flat",
+      "detected_by": "独立 Verifier：rc=1，定位 metrics.py:28-30",
+      "round2": "pass 8/8",
+      "final": "green"
+    },
+    "B_solo": {
+      "round1": "pass 8/8",
+      "injected": "同一处回归",
+      "detected_by": null,
+      "round2": null,
+      "final": "red"
+    }
+  },
+  "discriminated": true,
+  "dimension": "回归发现与返工",
+  "fairness_note": "不对称来自机制本身：A 有独立 Verifier + 返工循环，B 按对照组设计只有一次交付机会。测的是「有没有复核与返工」，不是「单 agent 能力差」——B 若被要求修，同样能修。",
+  "evidence": {
+    "A_rc": 0,
+    "B_rc": 1,
+    "tests_unchanged_both": true
+  },
+  "unmeasured": [
+    "真实自主性：无可用无头模型通道（claude 未登录 / DeepSeek 401 / Qwen 401）",
+    "24h 连续运行",
+    "主动性：本次回归仍由外部注入触发，不是系统自己发现的"
+  ]
+}

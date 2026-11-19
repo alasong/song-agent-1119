@@ -1,0 +1,10 @@
+{"seq": 1, "ts": 1795075659.502281, "kind": "experiment_start", "actor": "driver", "payload": {"experiment": "M0b-3"}}
+{"seq": 2, "ts": 1795075659.502559, "kind": "acceptance_red", "actor": "auditor", "payload": {"tests": ["test_metrics", "test_pipeline"], "rc": 1}}
+{"seq": 3, "ts": 1795075659.50268, "kind": "autonomous_dispatch", "actor": "exec-a3", "payload": {"arm": "A", "round": 1}}
+{"seq": 4, "ts": 1795075659.502779, "kind": "autonomous_dispatch", "actor": "solo-b4", "payload": {"arm": "B", "round": 1}}
+{"seq": 5, "ts": 1795075659.502871, "kind": "ground_truth", "actor": "auditor", "payload": {"A": "8/8 pass", "B": "8/8 pass"}}
+{"seq": 6, "ts": 1795075659.502962, "kind": "fault_injected", "actor": "driver", "payload": {"file": "xm/metrics.py", "bug": "trend() 恒为 flat", "both_arms": true}}
+{"seq": 7, "ts": 1795075659.503062, "kind": "ground_truth", "actor": "auditor", "payload": {"A_after_inject": "1 fail", "B_after_inject": "1 fail"}}
+{"seq": 8, "ts": 1795075659.503163, "kind": "verifier_detect", "actor": "verifier-a3", "payload": {"rc": 1, "failed": "test_trend_rising_and_falling", "at": "metrics.py:28-30"}}
+{"seq": 9, "ts": 1795075659.503258, "kind": "rework_dispatch", "actor": "exec-a3-fix", "payload": {"arm": "A", "round": 2}}
+{"seq": 10, "ts": 1795075659.503355, "kind": "ground_truth", "actor": "auditor", "payload": {"A_final": "8/8 pass rc=0", "B_final": "1 fail rc=1"}}
