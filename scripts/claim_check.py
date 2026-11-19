@@ -20,14 +20,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-LEVELS = ("L0", "L1", "L2", "L3")
-BARE = "最优"
-QUOTED = re.compile(r"「[^」]*」|“[^”]*”|\"[^\"]*\"|`[^`]*`")
-FENCE = re.compile(r"^\s*```")
+from xm.delivery import bare_optimal_lines  # 与交付检查共用一套规则，避免两处各写一份
+
 CERTAIN = ("已经完全验证", "已证明最优", "保证最优", "绝对正确")
-# 读数：数字 + 单位。没有读数的「最优」= 借论证的词汇，不给可核对的数
-READING = re.compile(r"\d+(?:\.\d+)?\s*(?:次|个|条|分|%|tokens|小时|轮|处|行|人)")
 
 
 def _strip_quotes(line: str) -> str:
@@ -35,21 +32,22 @@ def _strip_quotes(line: str) -> str:
 
 
 def scan_text(path: Path) -> list[dict]:
-    """返回违规行：裸称「最优」却没有级别或量化依据。"""
-    problems: list[dict] = []
+    """返回违规行：裸称「最优」却没有读数，或写了机器判不了的断言。"""
+    text = path.read_text(encoding="utf-8")
+    problems: list[dict] = [
+        {"file": str(path), "line": lineno, "kind": "bare-optimal",
+         "text": line[:120],
+         "why": "称「最优」却没有读数（数字+单位）——只给词不给数，就是凑"}
+        for lineno, line in bare_optimal_lines(text)
+    ]
     in_fence = False
-    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if FENCE.match(line):
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if re.match(r"^\s*```", line):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
-        bare = _strip_quotes(line)
-        if BARE in bare:
-            if not READING.search(line):
-                problems.append({"file": str(path), "line": lineno, "kind": "bare-optimal",
-                                 "text": line.strip()[:120],
-                                 "why": "称「最优」却没有读数（数字+单位）——只给词不给数，就是凑"})
+        bare = re.sub(r"「[^」]*」|“[^”]*”|\"[^\"]*\"|`[^`]*`", "", line)
         for word in CERTAIN:
             if word in bare:
                 problems.append({"file": str(path), "line": lineno, "kind": "certainty",

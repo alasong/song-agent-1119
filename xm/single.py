@@ -14,6 +14,16 @@ from xm.daemon import Daemon, DaemonConfig
 from xm.ledger import Ledger
 from xm.paths import runs_root
 
+DELIVERY_BLOCK = '''
+## 交付自证（必须追加在文档最后）
+## 结论
+一行结论 + 一个读数。
+## 依据
+1–3 条，每条写「选了什么 → 否掉了什么」。
+## 证据
+命令与退出码、path:line、提交号。
+'''
+
 
 def run_single(task_dir: Path, llm, budget_tokens: int = 200_000,
                run_root: Path | None = None, rounds: int = 3) -> dict:
@@ -23,7 +33,7 @@ def run_single(task_dir: Path, llm, budget_tokens: int = 200_000,
     run_dir.mkdir(parents=True, exist_ok=True)
     target = run_dir / task["target_name"]
     cfg = DaemonConfig(
-        spec=task["spec"], target_file=str(target), tests=[],
+        spec=task["spec"] + DELIVERY_BLOCK, target_file=str(target), tests=[],
         artifacts_root=str(runs_root()),
         verify_cmd=[sys.executable, str(task_dir / task.get("check", "check.py")), str(target)],
         max_rounds=rounds, patience=2, fence_lang=task.get("fence_lang", "markdown"),

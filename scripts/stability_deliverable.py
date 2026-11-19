@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from xm.daemon import Daemon, DaemonConfig
+from xm.single import DELIVERY_BLOCK
 from xm.ledger import Ledger
 from xm.llm import complete
 from xm.paths import runs_root
@@ -71,7 +72,7 @@ def main() -> int:
                 shutil.copy2(aux, run_dir / aux.name)
         target = run_dir / task["target_name"]
         cfg = DaemonConfig(
-            spec=task["spec"],
+            spec=task["spec"] + DELIVERY_BLOCK,   # 与单 agent 路径共用同一段交付自证要求
             target_file=str(target),
             tests=[],
             artifacts_root=str(runs_root()),

@@ -10,6 +10,9 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
+
+from xm import delivery
 
 ORG_TRIGGERS = "任务声明需要 ≥2 个技能域 / stakes 标记为 irreversible / 单 agent 未过判据"
 
@@ -43,12 +46,19 @@ def deliver(goal: str, task: dict, single_fn, org_fn) -> dict:
 
 
 def _report(goal: str, mode: str, reasons: list[str], attempts: list[dict]) -> dict:
+    # 交付自证（DNA #9）：判据过了只说明"东西对"，还得说明"话说清"
+    final = attempts[-1].get("artifact")
+    text = Path(final).read_text(encoding="utf-8") if final and Path(final).exists() else ""
+    dcheck = delivery.check(text)
+    criteria_ok = bool(attempts[-1].get("passed"))
     return {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "goal": goal,
         "decision": {"mode": mode, "reasons": reasons, "trigger_doc": ORG_TRIGGERS},
         "attempts": [{k: v for k, v in a.items() if k != "text"} for a in attempts],
-        "passed": bool(attempts[-1].get("passed")),
+        "passed": criteria_ok and dcheck["ok"],
+        "criteria_passed": criteria_ok,
+        "delivery": dcheck,
         "mode": mode,
         "org_called": any(a["mode"] == "org" for a in attempts),
         "final_artifact": attempts[-1].get("artifact"),
