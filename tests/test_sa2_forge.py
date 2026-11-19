@@ -147,5 +147,31 @@ class GoalTest(unittest.TestCase):
             fg.parse("目标", raw, VOCAB)
 
 
+class ContentCriteriaTest(unittest.TestCase):
+    """内容类判据：关键词必须出现，但塞进代码围栏里不算。"""
+
+    def test_instantiate_content_marker(self):
+        crit = fc.instantiate("必须出现：机制：\n必须出现：止损：", "有要素", ("correctness",))
+        self.assertEqual(crit.kind, "regex")
+        self.assertTrue(crit.spec["literal"])
+        self.assertEqual(crit.spec["patterns"], ["机制：", "止损："])
+
+    def test_mixed_markers_are_refused(self):
+        with self.assertRaises(ValueError):
+            fc.instantiate("必须包含：## 一、a\n必须出现：机制：", "混用", ("correctness",))
+
+    def test_self_test_holds_for_content_criteria(self):
+        crit = fc.propose_content("有要素", ["机制：", "止损："], ("correctness",))
+        ok, fails = fc.self_test(crit)
+        self.assertTrue(ok, fails)
+
+    def test_keyword_inside_fence_does_not_count(self):
+        judge = Judge(authority=("leader",))
+        judge.register(fc.tested(fc.propose_content("有要素", ["止损："], ("correctness",))),
+                       proposer="leader")
+        self.assertFalse(judge.run("有要素", "```\n止损：连续两轮即停\n```").ok)
+        self.assertTrue(judge.run("有要素", "止损：连续两轮即停").ok)
+
+
 if __name__ == "__main__":
     unittest.main()

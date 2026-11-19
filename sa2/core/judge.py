@@ -113,24 +113,33 @@ class Judge:
         return Verdict(name, not problems, tuple(problems),
                        evidence=f"kind={crit.kind} chars={len(text)}")
 
-    def _run_sections(self, spec: dict, text: str) -> list[str]:
-        required = [str(s) for s in (spec.get("required") or [])]
+    @staticmethod
+    def _unfenced(text: str) -> list[str]:
+        """代码围栏里的内容是「冒充件」：标题、关键词塞进围栏里都不算数。"""
+        out: list[str] = []
         fence = False
-        seen: set[str] = set()
         for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("```"):
+            if line.strip().startswith("```"):
                 fence = not fence
                 continue
-            if fence:
-                continue          # 围栏里的标题是「冒充件」，不算
-            if stripped in required:
-                seen.add(stripped)
+            if not fence:
+                out.append(line)
+        return out
+
+    def _run_sections(self, spec: dict, text: str) -> list[str]:
+        required = [str(s) for s in (spec.get("required") or [])]
+        seen = {line.strip() for line in self._unfenced(text)}
         return [f"缺章节：{h}" for h in required if h not in seen]
 
     def _run_regex(self, spec: dict, text: str) -> list[str]:
-        return [f"缺正则：{p}" for p in (spec.get("patterns") or [])
-                if not re.search(str(p), text, re.M)]
+        body = "\n".join(self._unfenced(text))
+        literal = bool(spec.get("literal"))
+        missing = []
+        for pattern in spec.get("patterns") or []:
+            target = re.escape(str(pattern)) if literal else str(pattern)
+            if not re.search(target, body, re.M):
+                missing.append(f"缺{'关键词' if literal else '正则'}：{pattern}")
+        return missing
 
     def _run_callable(self, spec: dict, text: str) -> list[str]:
         module_name, _, func_name = str(spec.get("target", "")).partition(":")

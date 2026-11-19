@@ -19,12 +19,13 @@ from ..core.gate import Declaration
 from ..core.judge import Judge
 from ..core.ledger import Ledger
 from ..forge.org import OrgPlan
+from ..memory.cases import CaseBook
 
 
 class PDCA:
     def __init__(self, judge: Judge, ledger: Ledger, plan: OrgPlan, produce: "callable",
                  vocab, usage: list[dict] | None = None,
-                 max_stage_attempts: int = 2):
+                 max_stage_attempts: int = 2, cases: CaseBook | None = None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
@@ -38,6 +39,7 @@ class PDCA:
         self.vocab = vocab
         self.usage = usage
         self.max_stage_attempts = max_stage_attempts
+        self.cases = cases
 
     def run(self, decl: Declaration, seed: str = "", evidence=None) -> dict:
         # ① 前置门：任何一条不成立，一次调用都不发
@@ -83,11 +85,15 @@ class PDCA:
                     self.ledger.append("stage_ok", stage.name, {"attempt": attempt})
                     break
 
-                feedback = "；".join(problems)
-                rejects.append({"stage": stage.name, "attempt": attempt, "problems": problems})
+                raw = "；".join(problems)
+                feedback = self._feedback(raw)
+                rejects.append({"stage": stage.name, "attempt": attempt,
+                                "problems": problems, "feedback": feedback})
                 self.ledger.append("reject", "stage_gate",
                                    {"stage": stage.name, "attempt": attempt, "problems": problems})
                 if attempt == self.max_stage_attempts:
+                    if self.cases is not None:
+                        self.cases.add(stage.name, raw, "按拒收原因逐条修后重做该阶段")
                     return self._report(
                         False, f"阶段「{stage.name}」连续 {attempt} 次未过阶段门",
                         redone=redone, rejects=rejects, dispatches=dispatches, budget=budget)
@@ -113,11 +119,18 @@ class PDCA:
         return self._report(passed, "" if passed else "交付门/证据门未过",
                             redone=redone, rejects=rejects, dispatches=dispatches,
                             budget=budget, problems=problems, evidence=evidence,
-                            chars=len(text), ran=sorted(ran))
+                            chars=len(text), ran=sorted(ran), text=text)
+
+    def _feedback(self, raw: str) -> str:
+        """把历史案例并进重做提示：没有这一句，案例库就只是写不读的死功能。"""
+        if self.cases is None:
+            return raw
+        hints = [f"{c.stage}·{c.fix}" for c in self.cases.similar(raw, k=2) if c.fix]
+        return raw + ("；历史案例：" + " / ".join(hints) if hints else "")
 
     def _report(self, passed: bool, reason: str, *, problems=(), redone=(), rejects=(),
                 dispatches: int = 0, budget: Budget | None = None, evidence=(),
-                chars: int = 0, ran=()) -> dict:
+                chars: int = 0, ran=(), text: str = "") -> dict:
         return {
             "passed": passed,
             "reason": reason,
@@ -129,5 +142,6 @@ class PDCA:
             "evidence": list(evidence),
             "ran": list(ran),
             "chars": chars,
+            "text": text,
             "ledger": str(self.ledger.path) if isinstance(self.ledger.path, Path) else str(self.ledger.path),
         }

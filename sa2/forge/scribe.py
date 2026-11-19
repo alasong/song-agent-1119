@@ -22,6 +22,7 @@ RETRY = "这是第 {attempt} 次尝试，上一次这一阶段被拒。"
 class Scribe:
     llm: LLM
     usage: list[dict] = field(default_factory=list)
+    spec: str = ""              # 任务规格：所有角色共用，判据按它判
     max_tokens: int = 1200
     upstream_chars: int = 1200
     calls: int = 0
@@ -37,7 +38,10 @@ class Scribe:
 
     def prompt(self, role, stage: str, upstream: str, attempt: int, feedback: str = "") -> str:
         upstream_body = (upstream or "").strip()[: self.upstream_chars] or "（无，你是第一个）"
-        lines = [
+        lines = []
+        if self.spec.strip():
+            lines.append(f"## 任务规格\n{self.spec.strip()}")
+        lines += [
             f"## 你的角色\n你是「{role.name}」，职责：{role.duty}\n验收方式：{role.criteria}",
             f"## 当前阶段\n{stage}\n" + (FIRST if attempt <= 1 else RETRY.format(attempt=attempt)),
             f"## 上游交付\n```\n{upstream_body}\n```",
