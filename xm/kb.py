@@ -60,6 +60,9 @@ class KnowledgeBase:
                 and (q in f.claim.lower() or any(q in e.lower() for e in f.evidence))]
         return sorted(hits, key=lambda f: len(f.claim))[:limit]
 
+    def keys(self) -> set[str]:
+        return set(self._facts)
+
     def domains(self) -> list[str]:
         return sorted({f.domain for f in self._facts.values()})
 

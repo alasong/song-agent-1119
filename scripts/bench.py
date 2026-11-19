@@ -74,13 +74,22 @@ def g4_knowledge() -> dict:
         return {"passed": False, "evidence": "只有手写演示，没有真实获取记录",
                 "next": "跑 scripts/kb_fetch_demo.py：从公开源取两个领域并入底座"}
     latest = json.loads(records[-1].read_text(encoding="utf-8"))
-    ok = bool(latest.get("passed"))
     per = latest.get("per_domain", {})
+    fetched_ok = bool(latest.get("passed"))
+
+    rags = sorted((ROOT / "reports").glob("rag-*.json"))
+    rag_ok = False
+    rag_refs = 0
+    if rags:
+        rag = json.loads(rags[-1].read_text(encoding="utf-8"))
+        rag_ok = bool(rag.get("passed"))
+        rag_refs = rag.get("refs", 0)
+
     return {
-        "passed": ok,
-        "evidence": "真实获取：" + "，".join(
-            f"{d} 取{v.get('stored', 0)}条" for d, v in per.items()),
-        "next": "两个领域各取到 ≥2 条带 URL 证据的事实，且换领域不改代码",
+        "passed": fetched_ok and rag_ok,
+        "evidence": "取：" + "，".join(f"{d} {v.get('stored', 0)} 条" for d, v in per.items())
+                    + f"；用：RAG 引用 {rag_refs} 条，可溯源={rag_ok}",
+        "next": "两个领域各取到 ≥2 条带 URL 的事实，且交付里能引用到真实条目",
     }
 
 
