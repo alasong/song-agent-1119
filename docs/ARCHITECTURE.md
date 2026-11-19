@@ -1,5 +1,6 @@
 # 架构
 
+> 本文讲**现在长什么样**；目标架构与差距见 [`SA-ARCHITECTURE.md`](SA-ARCHITECTURE.md)。
 > 配套：`README.md`（边界与用法）、`ROADMAP.md`（执行顺序）。这里只讲「谁管什么、按什么顺序做事」。
 
 ## 1. 五层，各管一件事
