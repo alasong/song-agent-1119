@@ -1,0 +1,31 @@
+{
+  "rounds": 20,
+  "readings": {
+    "autonomous_dispatch": 42,
+    "self_correction": 1,
+    "rejection_rate": 0.0244
+  },
+  "agents": [
+    {
+      "name": "alice",
+      "status": "active",
+      "budget": 100.0,
+      "dispatched": 20,
+      "no_progress": 0
+    },
+    {
+      "name": "bob",
+      "status": "active",
+      "budget": 100.0,
+      "dispatched": 20,
+      "no_progress": 0
+    },
+    {
+      "name": "carol",
+      "status": "frozen",
+      "budget": 50.0,
+      "dispatched": 2,
+      "no_progress": 4
+    }
+  ]
+}

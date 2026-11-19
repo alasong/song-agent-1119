@@ -1,0 +1,126 @@
+{"seq": 1, "ts": 1795074508.375752, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 1}}
+{"seq": 2, "ts": 1795074508.376326, "kind": "submission", "actor": "alice", "payload": {"round": 1}}
+{"seq": 3, "ts": 1795074508.376462, "kind": "fact", "actor": "alice", "payload": {"round": 1}}
+{"seq": 4, "ts": 1795074508.376569, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 1}}
+{"seq": 5, "ts": 1795074508.376666, "kind": "submission", "actor": "bob", "payload": {"round": 1}}
+{"seq": 6, "ts": 1795074508.376779, "kind": "rejected", "actor": "bob", "payload": {"round": 1}}
+{"seq": 7, "ts": 1795074508.376877, "kind": "self_correction", "actor": "bob", "payload": {"reason": "verifier_rejected"}}
+{"seq": 8, "ts": 1795074508.376966, "kind": "fact", "actor": "bob", "payload": {"round": 1, "corrected": true}}
+{"seq": 9, "ts": 1795074508.377056, "kind": "autonomous_dispatch", "actor": "carol", "payload": {"subtree": "goal/c", "round": 1}}
+{"seq": 10, "ts": 1795074508.377149, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 2}}
+{"seq": 11, "ts": 1795074508.377241, "kind": "submission", "actor": "alice", "payload": {"round": 2}}
+{"seq": 12, "ts": 1795074508.377334, "kind": "fact", "actor": "alice", "payload": {"round": 2}}
+{"seq": 13, "ts": 1795074508.377428, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 2}}
+{"seq": 14, "ts": 1795074508.377522, "kind": "submission", "actor": "bob", "payload": {"round": 2}}
+{"seq": 15, "ts": 1795074508.377626, "kind": "fact", "actor": "bob", "payload": {"round": 2}}
+{"seq": 16, "ts": 1795074508.377723, "kind": "autonomous_dispatch", "actor": "carol", "payload": {"subtree": "goal/c", "round": 2}}
+{"seq": 17, "ts": 1795074508.378052, "kind": "downgrade", "actor": "carol", "payload": {"no_progress": 2, "budget": 50.0}}
+{"seq": 18, "ts": 1795074508.378461, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 3}}
+{"seq": 19, "ts": 1795074508.378665, "kind": "submission", "actor": "alice", "payload": {"round": 3}}
+{"seq": 20, "ts": 1795074508.378815, "kind": "fact", "actor": "alice", "payload": {"round": 3}}
+{"seq": 21, "ts": 1795074508.37895, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 3}}
+{"seq": 22, "ts": 1795074508.379105, "kind": "submission", "actor": "bob", "payload": {"round": 3}}
+{"seq": 23, "ts": 1795074508.379232, "kind": "fact", "actor": "bob", "payload": {"round": 3}}
+{"seq": 24, "ts": 1795074508.379369, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 4}}
+{"seq": 25, "ts": 1795074508.379501, "kind": "submission", "actor": "alice", "payload": {"round": 4}}
+{"seq": 26, "ts": 1795074508.379625, "kind": "fact", "actor": "alice", "payload": {"round": 4}}
+{"seq": 27, "ts": 1795074508.379756, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 4}}
+{"seq": 28, "ts": 1795074508.379889, "kind": "submission", "actor": "bob", "payload": {"round": 4}}
+{"seq": 29, "ts": 1795074508.380015, "kind": "fact", "actor": "bob", "payload": {"round": 4}}
+{"seq": 30, "ts": 1795074508.380145, "kind": "freeze", "actor": "carol", "payload": {"no_progress": 4}}
+{"seq": 31, "ts": 1795074508.380275, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 5}}
+{"seq": 32, "ts": 1795074508.380403, "kind": "submission", "actor": "alice", "payload": {"round": 5}}
+{"seq": 33, "ts": 1795074508.380538, "kind": "fact", "actor": "alice", "payload": {"round": 5}}
+{"seq": 34, "ts": 1795074508.380672, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 5}}
+{"seq": 35, "ts": 1795074508.380807, "kind": "submission", "actor": "bob", "payload": {"round": 5}}
+{"seq": 36, "ts": 1795074508.380949, "kind": "fact", "actor": "bob", "payload": {"round": 5}}
+{"seq": 37, "ts": 1795074508.381087, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 6}}
+{"seq": 38, "ts": 1795074508.381271, "kind": "submission", "actor": "alice", "payload": {"round": 6}}
+{"seq": 39, "ts": 1795074508.381421, "kind": "fact", "actor": "alice", "payload": {"round": 6}}
+{"seq": 40, "ts": 1795074508.381568, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 6}}
+{"seq": 41, "ts": 1795074508.381716, "kind": "submission", "actor": "bob", "payload": {"round": 6}}
+{"seq": 42, "ts": 1795074508.381867, "kind": "fact", "actor": "bob", "payload": {"round": 6}}
+{"seq": 43, "ts": 1795074508.382021, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 7}}
+{"seq": 44, "ts": 1795074508.382175, "kind": "submission", "actor": "alice", "payload": {"round": 7}}
+{"seq": 45, "ts": 1795074508.382331, "kind": "fact", "actor": "alice", "payload": {"round": 7}}
+{"seq": 46, "ts": 1795074508.382488, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 7}}
+{"seq": 47, "ts": 1795074508.382652, "kind": "submission", "actor": "bob", "payload": {"round": 7}}
+{"seq": 48, "ts": 1795074508.382816, "kind": "fact", "actor": "bob", "payload": {"round": 7}}
+{"seq": 49, "ts": 1795074508.382985, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 8}}
+{"seq": 50, "ts": 1795074508.383151, "kind": "submission", "actor": "alice", "payload": {"round": 8}}
+{"seq": 51, "ts": 1795074508.383324, "kind": "fact", "actor": "alice", "payload": {"round": 8}}
+{"seq": 52, "ts": 1795074508.383494, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 8}}
+{"seq": 53, "ts": 1795074508.383666, "kind": "submission", "actor": "bob", "payload": {"round": 8}}
+{"seq": 54, "ts": 1795074508.383839, "kind": "fact", "actor": "bob", "payload": {"round": 8}}
+{"seq": 55, "ts": 1795074508.384015, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 9}}
+{"seq": 56, "ts": 1795074508.384197, "kind": "submission", "actor": "alice", "payload": {"round": 9}}
+{"seq": 57, "ts": 1795074508.384391, "kind": "fact", "actor": "alice", "payload": {"round": 9}}
+{"seq": 58, "ts": 1795074508.384577, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 9}}
+{"seq": 59, "ts": 1795074508.384765, "kind": "submission", "actor": "bob", "payload": {"round": 9}}
+{"seq": 60, "ts": 1795074508.384956, "kind": "fact", "actor": "bob", "payload": {"round": 9}}
+{"seq": 61, "ts": 1795074508.385143, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 10}}
+{"seq": 62, "ts": 1795074508.38533, "kind": "submission", "actor": "alice", "payload": {"round": 10}}
+{"seq": 63, "ts": 1795074508.385523, "kind": "fact", "actor": "alice", "payload": {"round": 10}}
+{"seq": 64, "ts": 1795074508.385714, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 10}}
+{"seq": 65, "ts": 1795074508.385909, "kind": "submission", "actor": "bob", "payload": {"round": 10}}
+{"seq": 66, "ts": 1795074508.386105, "kind": "fact", "actor": "bob", "payload": {"round": 10}}
+{"seq": 67, "ts": 1795074508.386305, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 11}}
+{"seq": 68, "ts": 1795074508.386504, "kind": "submission", "actor": "alice", "payload": {"round": 11}}
+{"seq": 69, "ts": 1795074508.386708, "kind": "fact", "actor": "alice", "payload": {"round": 11}}
+{"seq": 70, "ts": 1795074508.386916, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 11}}
+{"seq": 71, "ts": 1795074508.387128, "kind": "submission", "actor": "bob", "payload": {"round": 11}}
+{"seq": 72, "ts": 1795074508.387335, "kind": "fact", "actor": "bob", "payload": {"round": 11}}
+{"seq": 73, "ts": 1795074508.387543, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 12}}
+{"seq": 74, "ts": 1795074508.387751, "kind": "submission", "actor": "alice", "payload": {"round": 12}}
+{"seq": 75, "ts": 1795074508.387966, "kind": "fact", "actor": "alice", "payload": {"round": 12}}
+{"seq": 76, "ts": 1795074508.388208, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 12}}
+{"seq": 77, "ts": 1795074508.388443, "kind": "submission", "actor": "bob", "payload": {"round": 12}}
+{"seq": 78, "ts": 1795074508.388667, "kind": "fact", "actor": "bob", "payload": {"round": 12}}
+{"seq": 79, "ts": 1795074508.38889, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 13}}
+{"seq": 80, "ts": 1795074508.389128, "kind": "submission", "actor": "alice", "payload": {"round": 13}}
+{"seq": 81, "ts": 1795074508.389354, "kind": "fact", "actor": "alice", "payload": {"round": 13}}
+{"seq": 82, "ts": 1795074508.389582, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 13}}
+{"seq": 83, "ts": 1795074508.389816, "kind": "submission", "actor": "bob", "payload": {"round": 13}}
+{"seq": 84, "ts": 1795074508.390048, "kind": "fact", "actor": "bob", "payload": {"round": 13}}
+{"seq": 85, "ts": 1795074508.390289, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 14}}
+{"seq": 86, "ts": 1795074508.390523, "kind": "submission", "actor": "alice", "payload": {"round": 14}}
+{"seq": 87, "ts": 1795074508.39076, "kind": "fact", "actor": "alice", "payload": {"round": 14}}
+{"seq": 88, "ts": 1795074508.390998, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 14}}
+{"seq": 89, "ts": 1795074508.391251, "kind": "submission", "actor": "bob", "payload": {"round": 14}}
+{"seq": 90, "ts": 1795074508.391499, "kind": "fact", "actor": "bob", "payload": {"round": 14}}
+{"seq": 91, "ts": 1795074508.39175, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 15}}
+{"seq": 92, "ts": 1795074508.392012, "kind": "submission", "actor": "alice", "payload": {"round": 15}}
+{"seq": 93, "ts": 1795074508.39226, "kind": "fact", "actor": "alice", "payload": {"round": 15}}
+{"seq": 94, "ts": 1795074508.392517, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 15}}
+{"seq": 95, "ts": 1795074508.392769, "kind": "submission", "actor": "bob", "payload": {"round": 15}}
+{"seq": 96, "ts": 1795074508.393023, "kind": "fact", "actor": "bob", "payload": {"round": 15}}
+{"seq": 97, "ts": 1795074508.393291, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 16}}
+{"seq": 98, "ts": 1795074508.393547, "kind": "submission", "actor": "alice", "payload": {"round": 16}}
+{"seq": 99, "ts": 1795074508.393816, "kind": "fact", "actor": "alice", "payload": {"round": 16}}
+{"seq": 100, "ts": 1795074508.394077, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 16}}
+{"seq": 101, "ts": 1795074508.39434, "kind": "submission", "actor": "bob", "payload": {"round": 16}}
+{"seq": 102, "ts": 1795074508.394762, "kind": "fact", "actor": "bob", "payload": {"round": 16}}
+{"seq": 103, "ts": 1795074508.395504, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 17}}
+{"seq": 104, "ts": 1795074508.395865, "kind": "submission", "actor": "alice", "payload": {"round": 17}}
+{"seq": 105, "ts": 1795074508.396181, "kind": "fact", "actor": "alice", "payload": {"round": 17}}
+{"seq": 106, "ts": 1795074508.396474, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 17}}
+{"seq": 107, "ts": 1795074508.396762, "kind": "submission", "actor": "bob", "payload": {"round": 17}}
+{"seq": 108, "ts": 1795074508.397054, "kind": "fact", "actor": "bob", "payload": {"round": 17}}
+{"seq": 109, "ts": 1795074508.397337, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 18}}
+{"seq": 110, "ts": 1795074508.397628, "kind": "submission", "actor": "alice", "payload": {"round": 18}}
+{"seq": 111, "ts": 1795074508.397927, "kind": "fact", "actor": "alice", "payload": {"round": 18}}
+{"seq": 112, "ts": 1795074508.39821, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 18}}
+{"seq": 113, "ts": 1795074508.398546, "kind": "submission", "actor": "bob", "payload": {"round": 18}}
+{"seq": 114, "ts": 1795074508.398845, "kind": "fact", "actor": "bob", "payload": {"round": 18}}
+{"seq": 115, "ts": 1795074508.39915, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 19}}
+{"seq": 116, "ts": 1795074508.399451, "kind": "submission", "actor": "alice", "payload": {"round": 19}}
+{"seq": 117, "ts": 1795074508.399741, "kind": "fact", "actor": "alice", "payload": {"round": 19}}
+{"seq": 118, "ts": 1795074508.40004, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 19}}
+{"seq": 119, "ts": 1795074508.400333, "kind": "submission", "actor": "bob", "payload": {"round": 19}}
+{"seq": 120, "ts": 1795074508.400631, "kind": "fact", "actor": "bob", "payload": {"round": 19}}
+{"seq": 121, "ts": 1795074508.400932, "kind": "autonomous_dispatch", "actor": "alice", "payload": {"subtree": "goal/a", "round": 20}}
+{"seq": 122, "ts": 1795074508.401233, "kind": "submission", "actor": "alice", "payload": {"round": 20}}
+{"seq": 123, "ts": 1795074508.401539, "kind": "fact", "actor": "alice", "payload": {"round": 20}}
+{"seq": 124, "ts": 1795074508.401842, "kind": "autonomous_dispatch", "actor": "bob", "payload": {"subtree": "goal/b", "round": 20}}
+{"seq": 125, "ts": 1795074508.402163, "kind": "submission", "actor": "bob", "payload": {"round": 20}}
+{"seq": 126, "ts": 1795074508.40247, "kind": "fact", "actor": "bob", "payload": {"round": 20}}

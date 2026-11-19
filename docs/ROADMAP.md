@@ -130,4 +130,5 @@ L2+ 元治理、强校验（形式化验证）、物理世界接口、AI 版自�
 |---|---|---|
 | 设计文档 v2.1（含激励层） | 完成 | 设计文档 §15、§16 |
 | ROADMAP v1 | 完成 | 本文件 |
-| M0a | 未开始 | — |
+| M0a 测量仪 | 完成 | `python3 -m unittest discover -s tests -t .` 17 绿；反例测试在 `XM_DISABLE_LIVENESS=1` 下变红；读数见 `reports/m0a.json` |
+| M0b 真主体 | 未开始 | 需要接真模型与一个可判定的真任务 |
