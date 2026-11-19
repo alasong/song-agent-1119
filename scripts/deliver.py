@@ -22,6 +22,8 @@ from xm.sa_task import run as sa_run
 from xm.single import run_single
 
 ROOT = Path(__file__).resolve().parents[1]
+# 组织路径的运行期预算：task.json 没写就用这个，绝不无限跑（G6 要求每个任务有上限）
+DEFAULT_ORG_BUDGET = 200_000
 
 
 def make_llm(model: str, sink: list[dict]):
@@ -48,6 +50,9 @@ def main() -> int:
     ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--max-roles", type=int, default=None)
     ap.add_argument("--max-stages", type=int, default=None)
+    ap.add_argument("--budget", type=int, default=None,
+                    help=f"组织路径 token 上限（默认取 task.json 的 budget_tokens，"
+                         f"再退到 {DEFAULT_ORG_BUDGET}）")
     args = ap.parse_args()
 
     task_dir = Path(args.task).expanduser().resolve()
@@ -66,12 +71,16 @@ def main() -> int:
                 "kb_written": written.key if written else None}
 
     def org_fn() -> dict:
+        budget = args.budget or int(task.get("budget_tokens") or 0) or DEFAULT_ORG_BUDGET
         rep = sa_run(args.goal, task_dir, make_llm(args.model, org_sink),
-                     max_roles=args.max_roles, max_stages=args.max_stages)
+                     max_roles=args.max_roles, max_stages=args.max_stages,
+                     budget_tokens=budget, usage=org_sink)
         return {"passed": rep["passed"], "rounds": len(rep["attempts"]),
                 "chars": rep["chars"], "artifact": rep["deliverable"],
                 "roles": rep.get("org", {}).get("roles") or [],
                 "stages": len(rep.get("org", {}).get("process") or []),
+                "stopped": rep.get("stopped") or "",
+                "budget": rep.get("budget") or {},
                 **usage_stats(org_sink)}
 
     report = deliver_mod.deliver(args.goal, task, single_fn, org_fn)

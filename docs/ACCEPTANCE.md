@@ -88,5 +88,5 @@ python3 scripts/ab_test.py --judge-existing reports/ab-*.json  # 只给已有产
 - G2 的返工质量无人复核（只验「拒了之后确实返工」）。
 - G4 抓的是元数据、未读全文。
 - G5 的可复现依赖受控词表。
-- G6 的真实 usage 只覆盖走 `complete_usage` 的调用；**组织路径还没有运行期预算闸**，所以文档口径「100% 任务有上限」目前不成立。
+- G6 的真实 usage 只覆盖走 `complete_usage` 的调用。组织路径的运行期预算闸已接（`xm/sa_task.py` 的 `_Spend.exhausted()`，测试 `tests/test_org_budget.py`），但**它靠调用方把 usage 记账表传进来**：不传就退回字符估算，估出来的上限不是真上限。`scripts/deliver.py` 是传的，其它调用方要自己保证。
 - 质量判据（`xm/quality.py`）首次实测两臂同为 6/15，区分力尚未验证，只能用于同题对比，不能当门。

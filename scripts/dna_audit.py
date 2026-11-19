@@ -125,6 +125,19 @@ def backlog_section() -> tuple[bool, str]:
     return ("## 7" in backlog.SECTION), f"xm/backlog.py SECTION={backlog.SECTION!r}"
 
 
+def org_runtime_gate() -> tuple[bool, str]:
+    """组织路径的预算闸：既要跟预算比，又要真在派活路径上被问到。
+
+    只查「有比较」会漏掉「算了但没人看」；只查「有人问」会漏掉「问的东西没比预算」。
+    行为面由 tests/test_org_budget.py 证明，这里只判承载体在不在。
+    """
+    compared = in_file("xm/sa_task.py", r"tokens > self\.budget_tokens")
+    asked = in_file("xm/sa_task.py", r"exhausted\(\)")
+    ok = compared[0] and asked[0]
+    return ok, (f"{compared[1]} + {asked[1]}" if ok
+                else f"未构成闸：比较 {compared[1]}；调用点 {asked[1]}")
+
+
 # ── 每条 DNA 的分支谓词 ────────────────────────────────────────────────────
 # 一个分支 = 一句能判真假的断言。全真=落地，全假=零，其余=半。
 
@@ -162,7 +175,7 @@ SPEC: dict[int, list[tuple[str, object]]] = {
     ],
     8: [
         ("角色持有预算并做上限校验", lambda: find(r"budget_cap")),
-        ("组织路径运行期预算闸", lambda: in_file("xm/sa_task.py", r"if .*budget.*[><]")),
+        ("组织路径运行期预算闸", org_runtime_gate),
         ("收益账本（验证方收益=抓到的真错）", lambda: find(r"def (\w*(reward|收益)\w*)")),
     ],
     9: [
