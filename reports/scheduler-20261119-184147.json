@@ -1,0 +1,21 @@
+{
+  "ts": "2026-11-19T18:41:47",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 1,
+  "dispatches": 6,
+  "handoffs": 5,
+  "chain_ok": true,
+  "distinct_roles": 6,
+  "distinct_kinds": 6,
+  "has_verifier": true,
+  "worker_mode": "llm",
+  "sample_artifact": "**交付物：`docs/regression/m1_verification_plan.md`**\n\n- 验证环境：干净容器/虚拟环境，锁定依赖版本，记录 Python 与包版本。\n- 验证命令清单：`create_app()` 导入与调用",
+  "distinct_role_names": [
+    "代码与资产整理员",
+    "回归用例设计者",
+    "接口契约研究员",
+    "独立验证员",
+    "装配实现工程师",
+    "装配领域专家"
+  ]
+}

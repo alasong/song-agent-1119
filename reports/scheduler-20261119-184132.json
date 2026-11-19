@@ -1,0 +1,18 @@
+{
+  "ts": "2026-11-19T18:41:32",
+  "plan": "/Users/song/xm-runs/org/20261119-181944.json",
+  "stages": 2,
+  "dispatches": 6,
+  "handoffs": 5,
+  "chain_ok": true,
+  "distinct_roles": 3,
+  "distinct_kinds": 3,
+  "has_verifier": false,
+  "worker_mode": "llm",
+  "sample_artifact": "**交付物：`docs/m1_regression_cases.md`**\n\n- 主链路用例 R01–R05：`build_app(config)` 全必填→返回契约对象属性齐全；依赖按序初始化；组件装配成功。\n- 失败分支 F01–F04",
+  "distinct_role_names": [
+    "回归用例设计者",
+    "接口契约研究员",
+    "装配实现工程师"
+  ]
+}

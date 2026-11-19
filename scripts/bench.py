@@ -40,12 +40,13 @@ def g2_organization() -> dict:
     roles = latest.get("distinct_roles", 0)
     chain_ok = bool(latest.get("chain_ok"))
     handoffs = latest.get("handoffs", 0)
-    ok = scheduler and roles >= 3 and chain_ok and handoffs >= 3
+    mode = latest.get("worker_mode", "stub")
+    ok = scheduler and roles >= 3 and chain_ok and handoffs >= 3 and mode == "llm"
     return {
         "passed": ok,
-        "evidence": f"调度器={'有' if scheduler else '无'}；覆盖角色={roles}；"
-                    f"交接次数={handoffs}；交接链完整={chain_ok}",
-        "next": "派活必须真的产出并交给下游：产物带上游 id，断链即判红",
+        "evidence": f"覆盖角色={roles}；交接={handoffs}；链完整={chain_ok}；"
+                    f"角色执行方={mode}（要求 llm，stub 不算真干活）",
+        "next": "角色必须由真模型执行并产出内容，且产物带上游 id、断链判红",
     }
 
 

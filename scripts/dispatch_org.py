@@ -23,6 +23,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--plan", required=True)
+    ap.add_argument("--llm", action="store_true", help="用真模型扮演角色（默认 stub）")
+    ap.add_argument("--roles", type=int, default=0, help="只用前 N 个角色（0=全部）")
+    ap.add_argument("--stages", type=int, default=0, help="只用前 N 个阶段（0=全部）")
     args = ap.parse_args()
 
     plan_path = Path(args.plan).expanduser().resolve()
@@ -31,7 +34,26 @@ def main() -> int:
     ledger = Ledger(out_dir / f"ledger-{time.strftime('%Y%m%d-%H%M%S')}.jsonl")
 
     scheduler = Scheduler.from_plan_file(plan_path, ledger)
-    stats = scheduler.run()
+    plan = scheduler.plan
+    if args.roles:
+        plan["roles"] = plan["roles"][:args.roles]
+    if args.stages:
+        plan["process"] = plan["process"][:args.stages]
+
+    worker = None
+    worker_mode = "stub"
+    if args.llm:
+        from xm.worker import RoleWorker
+        from xm.llm import complete
+        llm = lambda messages: complete(messages, model="deepseek-flash", max_tokens=700,
+                                        extra={"thinking": {"type": "disabled"}})
+        worker = RoleWorker(llm)
+        worker_mode = "llm"
+
+    stats = scheduler.run(plan, worker=worker)
+    stats["worker_mode"] = worker_mode
+    if worker is not None:
+        stats["sample_artifact"] = worker.log[-1]["content"][:120] if worker.log else ""
 
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
