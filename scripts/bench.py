@@ -26,11 +26,25 @@ def g1_autonomy() -> dict:
     records = sorted((ROOT / "reports").glob("liveness-*.json"))
     long_run = [r for r in records
                 if json.loads(r.read_text(encoding="utf-8")).get("hours", 0) >= 24]
-    ok = bool(long_run)
+    if long_run:
+        return {"passed": True,
+                "evidence": f"完成 24h 常驻运行 {len(long_run)} 次", "next": ""}
+
+    # 还没跑满：把「已经跑了多久」报出来，别只报一个 0
+    progress = ""
+    cp = Path.home() / "xm-runs" / "resident" / "checkpoint.json"
+    if cp.exists():
+        data = json.loads(cp.read_text(encoding="utf-8"))
+        hours = data.get("running_hours")
+        ticks = data.get("ticks", 0)
+        if hours is not None:
+            progress = f"；进行中：已跑 {hours}h / 24h，{ticks} 轮"
+        else:
+            progress = f"；进行中：已 {ticks} 轮（旧检查点无时长字段）"
     return {
-        "passed": ok,
-        "evidence": f"24h 常驻运行记录 {len(long_run)} 条（需要 ≥1）",
-        "next": "写常驻循环跑满 24h，账本统计自主发起且有进展的任务数",
+        "passed": False,
+        "evidence": "24h 常驻运行记录 0 条（需要 ≥1）" + progress,
+        "next": "等常驻循环跑满 24h；跑完会自动写 reports/liveness-*.json",
     }
 
 
