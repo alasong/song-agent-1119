@@ -22,10 +22,19 @@ def _has(*rel_paths: str) -> bool:
     return all((ROOT / p).exists() for p in rel_paths)
 
 
+def liveness_ok(hours: float, progress_tasks: int, distinct_tasks: int) -> bool:
+    """G1 的纯判定：≥24h 且 ≥10 个有进展任务 且 ≥3 类任务。"""
+    return hours >= 24 and progress_tasks >= 10 and distinct_tasks >= 3
+
+
 def g1_autonomy() -> dict:
     records = sorted((ROOT / "reports").glob("liveness-*.json"))
-    long_run = [r for r in records
-                if json.loads(r.read_text(encoding="utf-8")).get("hours", 0) >= 24]
+    long_run = []
+    for r in records:
+        data = json.loads(r.read_text(encoding="utf-8"))
+        if liveness_ok(data.get("hours", 0), data.get("progress_tasks", 0),
+                       data.get("distinct_tasks", 0)):
+            long_run.append(r)
     if long_run:
         return {"passed": True,
                 "evidence": f"完成 24h 常驻运行 {len(long_run)} 次", "next": ""}
