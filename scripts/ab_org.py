@@ -97,8 +97,11 @@ def main() -> int:
         dims = {"tokens": -1, "chars": 1}
 
         if args.judge == "llm":
-            if not os.environ.get("DEEPSEEK_API_KEY"):
-                print("--judge llm 不可跑：没有 DEEPSEEK_API_KEY", file=sys.stderr)
+            from sa2 import llm as channel
+            try:
+                channel.resolve_key()
+            except Exception:
+                print("--judge llm 不可跑：resolve_key 找不到可用 key", file=sys.stderr)
                 return 2
             from sa2 import llm as channel
             blind = blind_score(texts["single"], texts["team"],
@@ -109,8 +112,9 @@ def main() -> int:
 
         result = verdict(arms, budget=args.budget, criteria_version="sec-2026-11-20", dims=dims)
         result["blind_judge"] = args.judge == "llm"
-        result["note"] = result.get("note", "") or (
-            "假模型：只比可测维度；质量维需 --judge llm")
+        result["note"] = result.get("note") or (
+            "真模型盲评（质量维已接入）" if args.judge == "llm"
+            else "假模型：只比可测维度；质量维需 --judge llm")
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

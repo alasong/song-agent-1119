@@ -171,8 +171,12 @@ def live_produce():
 
 
 def phase_live() -> int:
-    if not os.environ.get("DEEPSEEK_API_KEY"):
-        print("--live 不可跑：没有 DEEPSEEK_API_KEY（不拿假模型冒充真模型）")
+    from sa2 import llm as channel
+
+    try:
+        channel.resolve_key()          # 环境变量可能没有；resolve_key 还会从运行中的 DSH 进程环境取
+    except Exception:
+        print("--live 不可跑：resolve_key 找不到可用 key（不拿假模型冒充真模型）")
         return 2
     print("③ 真模型：角色死亡后由继任者用真模型写完")
     with tempfile.TemporaryDirectory() as tmp:
