@@ -48,6 +48,10 @@ def _py_files(dirs=PROD_DIRS):
                 continue
             if p.relative_to(ROOT).as_posix() == SELF:
                 continue
+            # 演示脚本不是生产路径：S7 起 demo_*.py 会 import 指标模块，
+            # 若算进「谁在用」，会把「组织已由指标驱动」判成假绿。
+            if p.name.startswith("demo_"):
+                continue
             yield p
 
 
@@ -185,6 +189,9 @@ SPEC: dict[int, list[tuple[str, object]]] = {
          lambda: in_file("sa2/loop/size.py", r"def decide\(")),
         ("调整由健康指标驱动（非人工参数）",
          lambda: and_all(used("sa2.core.metrics"),
+                         # 只 import 指标不算「驱动」：必须有生产路径消费外环的候选，
+                         # 否则「指标记下来了」会被判成「调整已由指标驱动」——假绿。
+                         used("sa2.loop.outer"),
                          (not find(r"max_roles", ("sa2",))[0],
                           "编制仍由人工参数 max_roles 决定，不是健康指标驱动的"))),
     ],

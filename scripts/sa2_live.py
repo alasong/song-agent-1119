@@ -30,6 +30,7 @@ from sa2.core.judge import Criterion, Judge, replace  # noqa: E402
 from sa2 import config                             # noqa: E402
 from sa2 import fetch                              # noqa: E402
 from sa2.core.ledger import Ledger                # noqa: E402
+from sa2.core import metrics                      # noqa: E402
 from sa2.forge import criteria as fc              # noqa: E402
 from sa2.forge import dims as fd                  # noqa: E402
 from sa2.forge import goal as fg                  # noqa: E402
@@ -565,6 +566,7 @@ def main() -> int:
         "ledger": str(ledger.path),
         "run_dir": str(run_dir),
     }
+    readings["metrics"] = metrics.compute(ledger.read(), readings)
     (run_dir / "readings.json").write_text(json.dumps(readings, ensure_ascii=False, indent=2),
                                            encoding="utf-8")
     ok = bool(readings["exact_usage"]) and report["dispatches"] >= 1
