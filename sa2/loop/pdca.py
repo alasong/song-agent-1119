@@ -30,14 +30,15 @@ class PDCA:
                  max_stage_attempts: int = 2, cases: CaseBook | None = None,
                  state_path: str | Path | None = None, resume: bool = False,
                  artifact_dir: str | Path | None = None, parallel: bool = False,
-                 hand=None):
+                 hand=None, context=None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
         带上它的理由很实际：sa 1.0 的整篇重写虽然也带反馈，但代价是整篇；
         2.0 只重做一格，如果这一格不知道上次错在哪，等于把省下的钱又亏回去。
         """
-        self.hand = hand          # 角色手上有工具时，派活前先真的取一次（结果进上游与证据台账）
+        self.hand = hand
+        self.context = context    # 每次派活都带上「截至目前已取回的证据」，后面的阶段才引用得到          # 角色手上有工具时，派活前先真的取一次（结果进上游与证据台账）
         self.judge = judge
         self.ledger = ledger
         self.plan = plan
@@ -105,7 +106,8 @@ class PDCA:
                     with ThreadPoolExecutor(max_workers=len(roles)) as pool:
                         futures = [(role, pool.submit(
                             self.produce, role, stage.name,
-                            self._with_material(text, materials[role.name]), attempt, feedback,
+                            self._with_material(text, materials[role.name] + self._context()),
+                            attempt, feedback,
                             requirements if role.name == writer else self._supplement(writer)))
                                    for role in roles]
                         for role, future in futures:
@@ -123,7 +125,7 @@ class PDCA:
                             return self._report(False, budget.why(f"{stage.name}·{role.name} 之前"),
                                                 redone=redone, rejects=rejects,
                                                 dispatches=dispatches, budget=budget)
-                        material = self._run_hand(role, stage.name)
+                        material = self._run_hand(role, stage.name) + self._context()
                         out = self.produce(role, stage.name, self._with_material(text, material),
                                        attempt, feedback,
                                        requirements if role.name == writer else self._supplement(writer))
@@ -224,6 +226,9 @@ class PDCA:
         if material:
             self.ledger.append("hand", role.name, {"stage": stage, "chars": len(material)})
         return material
+
+    def _context(self) -> str:
+        return (self.context() or "") if self.context else ""
 
     @staticmethod
     def _with_material(upstream: str, material: str) -> str:

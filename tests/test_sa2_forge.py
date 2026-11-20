@@ -267,3 +267,29 @@ class CollapseUncoveredTest(unittest.TestCase):
         self.assertEqual(same, plan)
         self.assertEqual(len(kept), 4)
         self.assertEqual(dropped, ())
+
+
+class HeadingsShapeTest(unittest.TestCase):
+    """结构由样例定义：阶段数必须等于章节数，否则第一节会被错岗占着。"""
+
+    def test_stage_count_must_match_headings(self):
+        data = json.loads(org_json())
+        data["stages"] = [
+            {"name": "一", "output": "a", "roles": ["规划"], "gate_criteria": ["g1"]},
+            {"name": "二", "output": "b", "roles": ["执行"], "gate_criteria": ["g2"]},
+            {"name": "三", "output": "c", "roles": ["验证"], "gate_criteria": ["g3"]},
+        ]
+        with self.assertRaises(fo.OrgError) as ctx:
+            fo.parse_plan("目标", json.dumps(data, ensure_ascii=False),
+                          headings=("## 一、最新进展", "## 二、主要方向"))
+        self.assertIn("章节", str(ctx.exception))
+
+    def test_matching_stage_count_passes(self):
+        data = json.loads(org_json())
+        data["stages"] = [
+            {"name": "进展梳理", "output": "a", "roles": ["规划"], "gate_criteria": ["g1"]},
+            {"name": "方向研判", "output": "b", "roles": ["执行", "验证"], "gate_criteria": ["g2"]},
+        ]
+        plan = fo.parse_plan("目标", json.dumps(data, ensure_ascii=False),
+                             headings=("## 一、最新进展", "## 二、主要方向"))
+        self.assertEqual([s.name for s in plan.stages], ["进展梳理", "方向研判"])

@@ -42,7 +42,8 @@ from sa2.memory.cases import CaseBook             # noqa: E402
 from sa2.memory.tools import ToolStore            # noqa: E402
 from sa2.llm import complete_usage                # noqa: E402
 
-HAND_TOOLS = ("fetch:arxiv",)   # 宿主级的手：要证据的交付，至少得有它
+HAND_TOOLS = ("fetch:arxiv", "fetch:hn")   # 宿主级的手：论文一条线，工程与讨论一条线
+SOURCE_OF = {"fetch:arxiv": "arxiv", "fetch:hn": "hn"}
 GOAL = "写一份「Agent 递归自我改进的最小可行实验」方案"
 
 SPEC = """必须包含：## 一、基线
@@ -71,22 +72,26 @@ def _register(judge: Judge, specs) -> list[str]:
     return [c.name for c in specs]
 
 
-def _arxiv_query(llm, goal: str, role) -> str:
+def _source_query(llm, goal: str, role, source: str = "arxiv") -> str:
     """让模型写一条检索语句：题面里的缩写（如 RSI）只有它自己分得清是哪一行。"""
-    ask = (f"给 arXiv API 写一条 search_query，主题：{goal}；检索意图：{role.duty}。"
+    where = (f"arXiv API 的 search_query（形如 all:\"xxx\"）" if source == "arxiv"
+             else "Hacker News 搜索（普通英文短语，不要字段前缀）")
+    ask = (f"给 {where} 写一条查询，主题：{goal}；检索意图：{role.duty}。"
            f"**只用英文关键词**，不要出现中文；**查询要短：2–4 个词**，不要 AND/OR 列表；"
-           f"只返回一条查询语句（形如 all:\"xxx\"），不要解释。")
+           f"只返回这一条查询，不要解释。")
     raw = llm([{"role": "user", "content": ask}], max_tokens=80) or ""
     first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
-    # 中文关键词在 arXiv 上基本等于零命中：先剥成 ASCII，剥完为空就当场报，不硬查
+    # 中文关键词在 arXiv / HN 上基本等于零命中：先剥成 ASCII，剥完为空就当场报，不硬查
     ascii_only = re.sub(r"[^\x20-\x7e]", " ", first).strip()
     query = re.sub(r"\s+", " ", ascii_only).strip("`").strip()
     if not query:
         raise fetch.FetchError(f"模型没给出可用的英文查询（原始：{first[:60]!r}）")
+    if source != "arxiv":
+        return re.sub(r"\s*[A-Za-z]+:", " ", query).strip()   # HN 不认 all:/title: 这类前缀
     return query if ":" in query else f'all:"{query}"'
 
 
-def _simplify_candidates(query: str) -> list[str]:
+def _simplify_candidates(query: str, source: str = "arxiv") -> list[str]:
     """零命中时按词数递减给出更松的查询，而不是「简化」一次就完。
 
     实测：`all:"AI research automation planning"`（四词短语）零命中，同名的三词
@@ -101,49 +106,87 @@ def _simplify_candidates(query: str) -> list[str]:
     else:
         words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]+", ascii_only)
                  if w.lower() not in {"and", "or", "not", "all", "latest", "recent"}]
+    def wrap(kept: list[str]) -> str:
+        phrase = " ".join(kept)
+        return f'all:"{phrase}"' if source == "arxiv" else phrase
+
     seen = {query.strip()}
     out: list[str] = []
     for n in range(len(words) - 1, 1, -1):
-        candidate = f'all:"{" ".join(words[:n])}"'
+        candidate = wrap(words[:n])
         if candidate not in seen:
             seen.add(candidate)
             out.append(candidate)
     return out
 
 
-def make_hand(llm, goal: str, book: EvidenceBook, content_dir):
-    """手的实现：查一次 arXiv → 落盘打戳成证据 → 交回一段可引用的素材。"""
-    def hand(role, stage: str) -> str:
-        query = _arxiv_query(llm, goal, role)
-        tried = [query]
-        items = None
+def evidence_block(book: EvidenceBook) -> str:
+    """把台账里已有证据列成可引用清单：编号 / 标题 / 日期 / 链接 / 摘要首句。"""
+    rows = book.all()
+    if not rows:
+        return ""
+    lines = ["## 已取回的证据（正文只能引用这些编号；没有证据的地方不许下时间判断）"]
+    for ev in rows:
+        body = []
         try:
-            items = fetch.arxiv(query, 5)
-        except fetch.FetchError as exc:
-            first = exc
-            for candidate in _simplify_candidates(query):
-                tried.append(candidate)
-                try:
-                    items = fetch.arxiv(candidate, 5)
-                except fetch.FetchError:
-                    continue
-                query = candidate          # 命中的那条进素材标题，读数里能看出退到了哪一档
-                break
-            if items is None:
-                raise fetch.FetchError(f"查询都没取到（试过 {tried}）：{first}") from first
-        evs = fetch.record(items, book, content_dir, "leader", start=len(book.all()) + 1)
-        lines = [f"## 已取回的证据（正文只能引用这些编号；查询 {query}）"]
-        for ev, item in zip(evs, items):
-            lines.append(f"[{ev.evidence_id}] {item['title']}（{item['published']}）{item['url']}")
-            lines.append(f"  摘要：{item['summary'][:280]}")
-        return "\n".join(lines)
+            body = Path(ev.content_path).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            pass
+        title = body[0][:80] if body else ev.uri
+        published = body[1][:10] if len(body) > 1 else ""
+        summary = " ".join(body[3:])[:200] if len(body) > 3 else ""
+        lines.append(f"[{ev.evidence_id}] {title}（{published}）{ev.uri}")
+        if summary:
+            lines.append(f"  摘要：{summary}")
+    return "\n".join(lines)
+
+
+def make_hand(llm, goal: str, book: EvidenceBook, content_dir):
+    """手的实现：角色挂了几件手就把几件都跑一遍（每个源每轮只取一次）。
+
+    为什么全跑：只取第一件手等于只用一条腿——真跑实测台账 8 条全是 arXiv，
+    工程与讨论那一路从来没被走过。每个源本轮只取一次，重复派活不重复取数。
+    取回的东西只做一件事：落盘、打戳、入台账；引用清单由 `evidence_block` 统一给，
+    这样后面的阶段也看得到前面取回的证据。
+    """
+    fetched: set[str] = set()
+
+    def hand(role, stage: str) -> str:
+        tools = tuple(getattr(role, "tools", ()) or ())
+        for tool in tools:
+            source = SOURCE_OF.get(tool)
+            if not source or source in fetched:
+                continue
+            fetched.add(source)
+            query = _source_query(llm, goal, role, source)
+            tried = [query]
+            items = None
+            try:
+                items = fetch.search(source, query, 5)
+            except fetch.FetchError as exc:
+                first = exc
+                for candidate in _simplify_candidates(query, source):
+                    tried.append(candidate)
+                    try:
+                        items = fetch.search(source, candidate, 5)
+                    except fetch.FetchError:
+                        continue
+                    query = candidate
+                    break
+                if items is None:
+                    raise fetch.FetchError(f"查询都没取到（试过 {tried}）：{first}") from first
+            fetch.record(items, book, content_dir, "leader", start=len(book.all()) + 1)
+            print(f"  手：{source} 取回 {len(items)} 条（查询 {query}）", flush=True)
+        return ""
     return hand
 
 
 def _tool_caps(store: ToolStore) -> dict[str, str]:
     """工具名 → 能力标签。编制校验靠它判「这个角色手上是不是真有能用的手」。"""
     caps = {name: str(entry.get("capability") or "") for name, entry in store.all().items()}
-    caps["fetch:arxiv"] = "fetch"   # 宿主级的手：不进工具库，但编制可以把它挂到角色上
+    # 宿主级的手：不进工具库，但编制可以把它挂到角色上
+    caps["fetch:arxiv"] = "fetch"
+    caps["fetch:hn"] = "fetch"
     return caps
 
 
@@ -222,6 +265,25 @@ def main() -> int:
 
     provisional = Declaration(goal=goal, dims=dims, criteria=(), budget_tokens=args.budget)
 
+    # ①.5 先把交付样例拿出来：结构由样例定义，编制要照着它造阶段。
+    # 反过来的顺序会出真错——第一节被「问题拆解」阶段占着，标题写着「最新进展」，
+    # 正文却是检索计划（2026-11-20 真跑实测）。
+    made = None
+    sample = ""
+    heads: list[str] = []
+    if args.auto_stages:
+        made = fc.propose_spec(goal, llm, context=("可参考的任务约束：\n" + hand_spec
+                                                   if args.spec_file else ""))
+        (run_dir / "proposed_spec.md").write_text(made["raw"], encoding="utf-8")
+        sample = (made.get("sample") or "").strip()
+        heads = ft.headings_of(sample)
+        if not heads:
+            print("交付样例里没有 `## ` 标题，无法切分阶段结构，先停机。", file=sys.stderr)
+            (run_dir / "readings.json").write_text(json.dumps(
+                {"passed": False, "reason": "交付样例无标题", "notes": notes},
+                ensure_ascii=False, indent=2), encoding="utf-8")
+            return 1
+
     # ② 先定编制（自动阶段判据需要编制才能按阶段造）
     org_error = ""
     plan = None
@@ -230,7 +292,8 @@ def main() -> int:
         if args.auto_org:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
-                                   require_gates=False, available_tools=_tool_caps(tool_store))
+                                   require_gates=False, available_tools=_tool_caps(tool_store),
+                                   headings=heads)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
@@ -256,18 +319,6 @@ def main() -> int:
     stage_specs: dict[str, list] = {}
     gates: dict[str, tuple[str, ...]] = {}
     if args.auto_stages:
-        made = fc.propose_spec(goal, llm, context=("可参考的任务约束：\n" + hand_spec
-                                                  if args.spec_file else ""))
-        (run_dir / "proposed_spec.md").write_text(made["raw"], encoding="utf-8")
-        sample = (made.get("sample") or "").strip()
-        heads = ft.headings_of(sample)
-        if not heads:
-            print("交付样例里没有 `## ` 标题，无法切分阶段结构，先停机。", file=sys.stderr)
-            (run_dir / "readings.json").write_text(json.dumps(
-                {"passed": False, "reason": "交付样例无标题", "notes": notes},
-                ensure_ascii=False, indent=2), encoding="utf-8")
-            return 1
-
         delivery_specs = [fc.tested(fc.propose_sections("交付·章节", heads, dims))]
         try:
             raw, full_tool = ft.checker_from_sections(sample, run_dir / "tools",
@@ -351,6 +402,11 @@ def main() -> int:
                        budget_tokens=args.budget)
 
     # ④ 编制收口：补阶段门、最后一阶段装配、交付要求下发到写正文的人
+    if args.evidence_min:
+        # 挂了一只手的角色要把手挂全：只挂 arXiv 等于只用一条腿（真跑实测：台账 8 条全是 arXiv）
+        plan = replace(plan, roles=tuple(
+            replace(r, tools=tuple(dict.fromkeys(r.tools + HAND_TOOLS)))
+            if any(t in HAND_TOOLS for t in r.tools) else r for r in plan.roles))
     if args.auto_stages:
         plan = fo.attach_stage_gates(plan, {st.name: gates.get(st.name) or tuple(decl.criteria)
                                             for st in plan.stages})
@@ -403,7 +459,8 @@ def main() -> int:
                 max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),
                 artifact_dir=run_dir / "stages",
-                hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"))
+                hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"),
+                context=lambda: evidence_block(evidence_book))
     report = pdca.run(decl, evidence=[])
 
     artifact = run_dir / "deliverable.md"

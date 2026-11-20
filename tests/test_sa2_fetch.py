@@ -77,3 +77,33 @@ class RecordTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+HN_JSON = """{"hits":[
+ {"objectID":"1","title":"When AI Builds Itself","created_at":"2026-06-04T10:00:00Z",
+  "url":"https://www.anthropic.com/institute/recursive-self-improvement","story_text":null},
+ {"objectID":"2","title":"The Economics of RSI","created_at":"2026-07-14T10:00:00Z",
+  "url":null,"story_text":"A discussion thread."}]}"""
+
+
+class HackerNewsTest(unittest.TestCase):
+    """第二个源：论文之外的工程与讨论，得能落成同一形状的证据。"""
+
+    def test_entries_carry_source_and_real_links(self):
+        from sa2.fetch import parse_hn
+        got = parse_hn(HN_JSON)
+        self.assertEqual(got[0]["source"], "hn")
+        self.assertTrue(got[0]["url"].startswith("https://www.anthropic.com"))
+        self.assertEqual(got[1]["url"], "https://news.ycombinator.com/item?id=2",
+                         "没有外链就指回 HN 讨论页")
+        self.assertEqual(got[0]["published"], "2026-06-04")
+
+    def test_empty_hits_is_a_failure(self):
+        from sa2.fetch import FetchError, parse_hn
+        with self.assertRaises(FetchError):
+            parse_hn('{"hits": []}')
+
+    def test_unknown_source_is_refused(self):
+        from sa2.fetch import FetchError, search
+        with self.assertRaises(FetchError):
+            search("weibo", "x")

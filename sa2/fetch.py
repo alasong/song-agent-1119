@@ -19,6 +19,8 @@ import urllib.request
 from .core.evidence import Evidence, EvidenceBook, digest_of, stamp
 
 ALLOWED_HOSTS = ("export.arxiv.org",)
+HN_ALLOWED = ("hn.algolia.com",)
+HN_BASE = "https://hn.algolia.com/api/v1/search"
 BASE = "https://export.arxiv.org/api/query"
 MAX_RESULTS = 50
 TIMEOUT = 20
@@ -29,12 +31,12 @@ class FetchError(RuntimeError):
     """取数失败。不许静默降级成空结果。"""
 
 
-def _check(url: str) -> None:
+def _check(url: str, allowed=ALLOWED_HOSTS) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         raise FetchError(f"只允许 https，拿到 {parsed.scheme!r}")
-    if parsed.hostname not in ALLOWED_HOSTS:
-        raise FetchError(f"白名单外的 host：{parsed.hostname!r}（允许 {ALLOWED_HOSTS}）")
+    if parsed.hostname not in allowed:
+        raise FetchError(f"白名单外的 host：{parsed.hostname!r}（允许 {allowed}）")
 
 
 def _default_transport(url: str, timeout: int) -> str:
@@ -114,3 +116,55 @@ def record(entries: list[dict], book: EvidenceBook, root, verifier: str,
         known[digest] = book.add(ev)
         stamped.append(known[digest])
     return stamped
+
+def hn_url(query: str, max_results: int = 5) -> str:
+    return HN_BASE + "?" + urllib.parse.urlencode({
+        "query": query, "tags": "story", "hitsPerPage": max_results})
+
+
+def parse_hn(text: str) -> list[dict]:
+    """Hacker News（Algolia）的 JSON 拆成同一形状的条目。"""
+    import json as _json
+    try:
+        data = _json.loads(text or "{}")
+    except _json.JSONDecodeError as exc:
+        raise FetchError(f"HN 返回的不是 JSON：{exc}") from exc
+    entries = []
+    for hit in data.get("hits") or []:
+        title = " ".join(str(hit.get("title") or "").split())
+        if not title:
+            continue
+        link = hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
+        entries.append({
+            "arxiv_id": f"hn-{hit.get('objectID')}",
+            "title": title,
+            "published": str(hit.get("created_at") or "")[:10],
+            "summary": " ".join(str(hit.get("story_text") or title).split())[:600],
+            "url": link,
+            "source": "hn",
+        })
+    if not entries:
+        raise FetchError("HN 没有命中：要么查询没人答，要么接口变了")
+    return entries
+
+
+def hn(query: str, max_results: int = 5, *, transport=None, timeout: int = TIMEOUT) -> list[dict]:
+    """第二个源：HN 的讨论与外部链接。和 arXiv 互补——那里是论文，这里是工程与讨论。"""
+    if not (query or "").strip():
+        raise FetchError("查询为空")
+    n = max(1, min(int(max_results), MAX_RESULTS))
+    url = hn_url(query.strip(), n)
+    _check(url, HN_ALLOWED)
+    send = transport or _default_transport
+    return parse_hn(send(url, timeout))[:n]
+
+
+SOURCES = {"arxiv": arxiv, "hn": hn}
+
+
+def search(source: str, query: str, n: int = 5) -> list[dict]:
+    """按源取数。源名必须登记过——不许在外面现编一个。"""
+    func = SOURCES.get(source)
+    if func is None:
+        raise FetchError(f"没有这个源：{source!r}（已登记 {sorted(SOURCES)}）")
+    return func(query, n)
