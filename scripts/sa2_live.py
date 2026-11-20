@@ -445,6 +445,26 @@ def main() -> int:
                        criteria=tuple(c.name for c in delivery_specs),
                        budget_tokens=args.budget)
 
+    if plan is None:
+        if args.auto_org:
+            try:
+                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
+                                   available_tools=_tool_caps(tool_store),
+                                   store=plan_store, ledger=ledger, notes=promotions)
+                decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
+                                                     f"{len(plan.stages)} 阶段", args.budget)
+            except fo.OrgError as exc:
+                org_error = str(exc)
+        if plan is None:
+            try:
+                plan, decision = size.plan_for(decl)
+            except ValueError as exc:
+                # 决策为组队、却没有编制：回退单人并记账。不许静默把「一个人写完」
+                # 记成「组织干成了」——与编制失败回退同一个口径。
+                plan = size.single_plan(decl)
+                decision = size.SizeDecision("single", f"回退单人：{exc}", args.budget)
+                org_error = org_error or str(exc)
+
     # ④ 编制收口：补阶段门、最后一阶段装配、交付要求下发到写正文的人
     if args.evidence_min:
         # 挂了一只手的角色要把手挂全：只挂 arXiv 等于只用一条腿（真跑实测：台账 8 条全是 arXiv）
@@ -460,18 +480,6 @@ def main() -> int:
         for i in range(1, len(stages)):
             stages[i] = replace(stages[i], mode="append")
         plan = replace(plan, stages=tuple(stages))
-    elif plan is None:
-        if args.auto_org:
-            try:
-                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
-                                   available_tools=_tool_caps(tool_store),
-                                   store=plan_store, ledger=ledger, notes=promotions)
-                decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
-                                                     f"{len(plan.stages)} 阶段", args.budget)
-            except fo.OrgError as exc:
-                org_error = str(exc)
-        if plan is None:
-            plan, decision = size.plan_for(decl)
 
     # ⑤ 造工具：给第一个阶段挂一个生成的检查器
     tool_error = ""
@@ -529,7 +537,7 @@ def main() -> int:
     evidence_problems = gate.check_evidence(evidence)
     # 编制失败后回退单人：可以出稿，但不许记绿——否则「组织干成了一件事」和
     # 「一个人写完一篇」在读数里长得一模一样（2026-11-20 实测就是这么绿的）。
-    org_fallback = bool(args.auto_org and org_error)
+    org_fallback = bool(org_error)
     if org_fallback:
         evidence_problems = evidence_problems + [
             f"编制未成立：{org_error}——回退单人出稿，不算完成"]
