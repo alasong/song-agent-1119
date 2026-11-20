@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W0 探针 v2：10 个真实任务，形式化 + 抗冒充对抗样本。
+"""W0 探针 v2：20+ 个真实任务，形式化 + 抗冒充对抗样本。
 
 两档计分：
 - L1 可执行：checker 跑得起来；合格件 rc=0；模型自给坏件、空文件、占位文本都 rc≠0。
@@ -37,6 +37,20 @@ TASKS = [
     ("H", "决定要不要每天自动跑一次 sa，并给出止损条件。"),
     ("I", "把一次真跑的成本写成一页账：token、失败次数、返工次数。"),
     ("J", "判断 sa 离「单 agent 死了任务仍完成」还差什么，并给一条验收命令。"),
+    ("K", "判断要不要给 sa 的 checker 加一层「语义复核」：说明收益、成本与失败模式。"),
+    ("L", "给一个三人小团队定一周的 OKR：目标、关键结果、验收口径都要可判定。"),
+    ("M", "判断是否该把 sa 的默认模型从 deepseek-flash 换成更强的模型，给出依据与回滚条件。"),
+    ("N", "写一份「上线前检查清单」：至少 5 条，每条都要能被脚本判定通过/不通过。"),
+    ("O", "判断要不要给 sa 引入人工复核环节：在哪些节点、谁来做、如何止损。"),
+    ("P", "评估把 sa 的日志从本地文件改成结构化 JSONL 的收益与迁移成本。"),
+    ("Q", "给一次线上事故写复盘：时间线、根因、影响面、改进项与验收方式。"),
+    ("R", "判断 sa 的 L2 抗冒充判据是否足够：指出至少一个它能放过、但人应判红的场景。"),
+    ("S", "为一个新功能写验收标准：功能描述、输入输出、边界条件、失败处理。"),
+    ("T", "判断要不要把 sa 的探针任务集从 10 条扩到 20 条以上：收益、成本、风险。"),
+    ("U", "给 sa 定一条「停止扩张、先修内环」的触发条件，并说明如何机检。"),
+    ("V", "评估把 sa 的报告从 JSON 改成「JSON + 一页 Markdown 摘要」的取舍。"),
+    ("W", "判断 sa 的 checker 是否应该禁止联网：给出理由、例外与检测方式。"),
+    ("X", "为一个内部工具写使用说明：适用场景、不适用场景、一条最小示例。"),
 ]
 
 FORM_PROMPT = """你是组织里的「目标形式化」角色。把下面的模糊任务形式化成可判定的东西。
@@ -64,6 +78,13 @@ EMPTY = ""
 PLACEHOLDER = "TODO：待补充。\n"
 
 
+def pick_tasks(n: int) -> list[tuple[str, str]]:
+    """返回任务清单的前 n 条；n 超过总数时返回全部。"""
+    if n < 0:
+        raise ValueError("n 必须 >= 0")
+    return list(TASKS[:n])
+
+
 def _call(prompt: str, max_tokens: int) -> tuple[str, int]:
     text, usage = llm.complete_usage(
         [{"role": "user", "content": prompt}], model=MODEL, max_tokens=max_tokens,
@@ -84,11 +105,12 @@ def _run(checker: Path, target: Path, timeout: int = 20) -> int:
     return proc.returncode
 
 
-def probe() -> dict:
+def probe(tasks: list[tuple[str, str]] | None = None) -> dict:
+    tasks = list(TASKS) if tasks is None else list(tasks)
     rows = []
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        for task_id, task in TASKS:
+        for task_id, task in tasks:
             row = {"id": task_id, "task": task, "l1": False, "l2": False, "why": ""}
             try:
                 text, u1 = _call(FORM_PROMPT.replace("{task}", task), 1800)
@@ -132,10 +154,11 @@ def probe() -> dict:
 
     l1n = sum(1 for r in rows if r["l1"])
     l2n = sum(1 for r in rows if r["l2"])
+    total = len(rows) or 1
     result = {
         "step": "W0-formalize-v2", "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "samples": len(rows), "l1_passed": l1n, "l2_passed": l2n,
-        "l1_rate": round(l1n / len(rows), 3), "l2_rate": round(l2n / len(rows), 3),
+        "l1_rate": round(l1n / total, 3), "l2_rate": round(l2n / total, 3),
         "note": "L2=判据能拒掉格式齐全但结论错的稿子；仍不等于语义判对",
         "rows": rows,
     }
