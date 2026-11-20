@@ -47,6 +47,11 @@ def goals_path() -> Path:
     return ensure() / "goals.json"
 
 
+def plans_path() -> Path:
+    """编制与流程的跨运行库（复合键，和 goals 的 goal→判据名索引分开存）。"""
+    return ensure() / "plans.json"
+
+
 def fingerprint(goal: str) -> str:
     import hashlib
     return hashlib.sha1((goal or "").strip().encode("utf-8")).hexdigest()[:12]

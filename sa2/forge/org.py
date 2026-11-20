@@ -201,11 +201,55 @@ def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
   "stages":[{{"name":"","output":"","roles":[""],"gate_criteria":[""]}}]}}"""
 
 
+def _plan_to_dict(plan: OrgPlan) -> dict:
+    return {
+        "goal": plan.goal,
+        "roles": [{"name": r.name, "kind": r.kind, "duty": r.duty,
+                   "criteria": r.criteria, "budget": r.budget,
+                   "tools": list(r.tools)} for r in plan.roles],
+        "stages": [{"name": s.name, "output": s.output, "roles": list(s.roles),
+                    "gate_criteria": list(s.gate_criteria), "mode": s.mode}
+                   for s in plan.stages],
+    }
+
+
+def _plan_from_dict(data: dict) -> OrgPlan:
+    roles = tuple(
+        Role(name=str(r["name"]), kind=str(r["kind"]), duty=str(r.get("duty") or ""),
+             criteria=str(r.get("criteria") or ""), budget=int(r.get("budget") or 0),
+             tools=tuple(r.get("tools") or ()))
+        for r in data.get("roles") or ())
+    stages = tuple(
+        Stage(name=str(s["name"]), output=str(s.get("output") or ""),
+              roles=tuple(s.get("roles") or ()),
+              gate_criteria=tuple(s.get("gate_criteria") or ()),
+              mode=str(s.get("mode") or "replace"))
+        for s in data.get("stages") or ())
+    if not roles or not stages:
+        raise OrgError("编制库里这一条是空的")
+    return OrgPlan(goal=str(data.get("goal") or ""), roles=roles, stages=stages)
+
+
 def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2,
              require_gates: bool = True, available_tools=None,
-             headings=(), max_tokens: int | None = None) -> OrgPlan:
+             headings=(), max_tokens: int | None = None,
+             store=None, ledger=None) -> OrgPlan:
     """生成编制。被自己的校验拒了就带着拒收原因重来一次——
-    不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。"""
+    不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。
+
+    store 给定时先查复合键：命中就不再问模型，账本记 `plan_reused`。
+    """
+    key = store.key(goal, budget_cap, criteria, available_tools, headings) if store else ""
+    if store:
+        cached = store.get(key)
+        if cached:
+            plan = _plan_from_dict(cached)
+            store.mark_reuse(key)
+            if ledger is not None:
+                ledger.append("plan_reused", "org",
+                              {"key": key, "goal": goal,
+                               "roles": len(plan.roles), "stages": len(plan.stages)})
+            return plan
     tools_text = "、".join(f"{n}（能力：{c or '未知'}）"
                           for n, c in (available_tools or {}).items())
     prompt = _org_prompt(goal, budget_cap, criteria, tools_text, headings)
@@ -218,10 +262,13 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: i
             # 编制的输出是一整份 JSON：5 角色 3 阶段就要两千多字，贴着通道默认上限
             # （2400 tokens）就会随机被截断，然后整支班子搭不起来。这里单独给额度。
             ask_kwargs = {"max_tokens": max_tokens} if max_tokens else {}
-            return parse_plan(goal, llm([{"role": "user", "content": ask}], **ask_kwargs),
+            plan = parse_plan(goal, llm([{"role": "user", "content": ask}], **ask_kwargs),
                               budget_cap,
                               available_criteria=criteria, require_gates=require_gates,
                               available_tools=available_tools, headings=headings)
+            if store:
+                store.put(key, _plan_to_dict(plan))
+            return plan
         except OrgError as exc:
             last = exc
             feedback = str(exc)

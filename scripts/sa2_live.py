@@ -40,6 +40,7 @@ from sa2.loop import size                         # noqa: E402
 from sa2.loop.pdca import PDCA                    # noqa: E402
 from sa2.memory import registry                   # noqa: E402
 from sa2.memory.cases import CaseBook             # noqa: E402
+from sa2.memory.plans import PlanStore            # noqa: E402
 from sa2.memory.tools import ToolStore            # noqa: E402
 from sa2.llm import complete_usage                # noqa: E402
 
@@ -318,13 +319,15 @@ def main() -> int:
     org_error = ""
     plan = None
     decision = None
+    plan_store = PlanStore(registry.plans_path())
     if args.auto_stages:
         if args.auto_org:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
                                    require_gates=False, available_tools=_tool_caps(tool_store),
                                    headings=heads,
-                                   max_tokens=int(config.get("org_max_tokens")))
+                                   max_tokens=int(config.get("org_max_tokens")),
+                                   store=plan_store, ledger=ledger)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
@@ -456,7 +459,8 @@ def main() -> int:
         if args.auto_org:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
-                                   available_tools=_tool_caps(tool_store))
+                                   available_tools=_tool_caps(tool_store),
+                                   store=plan_store, ledger=ledger)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
