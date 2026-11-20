@@ -86,29 +86,51 @@ def _arxiv_query(llm, goal: str, role) -> str:
     return query if ":" in query else f'all:"{query}"'
 
 
-def _simplify(query: str) -> str:
-    """模型爱写一长串布尔表达式，arXiv 上常常零命中。退一步：取第一个引号短语，
-    没有就取前两个英文实词。"""
-    quoted = re.search(r'"([^"]+)"', query)
+def _simplify_candidates(query: str) -> list[str]:
+    """零命中时按词数递减给出更松的查询，而不是「简化」一次就完。
+
+    实测：`all:"AI research automation planning"`（四词短语）零命中，同名的三词
+    有好几条、两词有更多。旧版只取引号里的短语——查询本身已是短语时原样返回，
+    于是「降级」降成了原地不动，整轮死在这一次取数上。
+    这里返回的候选不含入参本身，也不会重复；词数不足三个时返回空表（真没法再松）。
+    """
+    ascii_only = re.sub(r"[^\x20-\x7e]", " ", query or "")
+    quoted = re.search(r'"([^"]+)"', ascii_only)
     if quoted:
-        return f'all:"{quoted.group(1)}"'
-    words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]+", query)
-             if w.lower() not in {"and", "or", "not", "all", "latest", "recent"}]
-    return f'all:"{" ".join(words[:2])}"' if words else ""
+        words = re.findall(r"[A-Za-z][A-Za-z\-]+", quoted.group(1))
+    else:
+        words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]+", ascii_only)
+                 if w.lower() not in {"and", "or", "not", "all", "latest", "recent"}]
+    seen = {query.strip()}
+    out: list[str] = []
+    for n in range(len(words) - 1, 1, -1):
+        candidate = f'all:"{" ".join(words[:n])}"'
+        if candidate not in seen:
+            seen.add(candidate)
+            out.append(candidate)
+    return out
 
 
 def make_hand(llm, goal: str, book: EvidenceBook, content_dir):
     """手的实现：查一次 arXiv → 落盘打戳成证据 → 交回一段可引用的素材。"""
     def hand(role, stage: str) -> str:
         query = _arxiv_query(llm, goal, role)
+        tried = [query]
+        items = None
         try:
             items = fetch.arxiv(query, 5)
         except fetch.FetchError as exc:
-            simple = _simplify(query)
-            if not simple or simple == query:
-                raise fetch.FetchError(f"查询 {query!r} 没取到：{exc}") from exc
-            items = fetch.arxiv(simple, 5)
-            query = simple
+            first = exc
+            for candidate in _simplify_candidates(query):
+                tried.append(candidate)
+                try:
+                    items = fetch.arxiv(candidate, 5)
+                except fetch.FetchError:
+                    continue
+                query = candidate          # 命中的那条进素材标题，读数里能看出退到了哪一档
+                break
+            if items is None:
+                raise fetch.FetchError(f"查询都没取到（试过 {tried}）：{first}") from first
         evs = fetch.record(items, book, content_dir, "leader", start=len(book.all()) + 1)
         lines = [f"## 已取回的证据（正文只能引用这些编号；查询 {query}）"]
         for ev, item in zip(evs, items):
