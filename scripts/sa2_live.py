@@ -31,6 +31,7 @@ from sa2 import config                             # noqa: E402
 from sa2 import fetch                              # noqa: E402
 from sa2.core.ledger import Ledger                # noqa: E402
 from sa2.core import metrics                      # noqa: E402
+from sa2.core import gate_profiles                # noqa: E402
 from sa2.forge import criteria as fc              # noqa: E402
 from sa2.forge import dims as fd                  # noqa: E402
 from sa2.forge import goal as fg                  # noqa: E402
@@ -254,9 +255,19 @@ def main() -> int:
                     help="派活经 N 个 worker 进程执行（0=进程内，默认）")
     ap.add_argument("--evidence-min", type=int, default=3,
                     help="交付至少要几条可追引用；0 = 不要求（默认 3）")
+    ap.add_argument("--task-type", choices=tuple(gate_profiles.PROFILES), default="default",
+                    help="任务类型决定挂哪些交付判据：default=引用≥3；annotation=只保体量；engineering=必须有测试")
     ap.add_argument("--reuse", action="store_true",
                     help="同目标已有判据就复用，不再让模型重新造")
     args = ap.parse_args()
+
+    profile = gate_profiles.get(args.task_type)
+    if profile.name == "engineering":
+        problems = gate_profiles.check_task(profile, test_cmd=None)
+        print("工程型任务走 DevLoop（sa2.loop.dev），不走 PDCA 交付：" + "；".join(problems),
+              file=sys.stderr)
+        return 2
+    args.evidence_min = profile.min_citations
 
     goal = args.goal
     hand_spec = (Path(args.spec_file).expanduser().read_text(encoding="utf-8")
@@ -422,22 +433,11 @@ def main() -> int:
                 return 1
             delivery_specs = fc.tested_set(cands) if len(cands) > 1 else [fc.tested(cands[0])]
 
-    if args.evidence_min > 0:
-        # 交付必须带可追证据：判据自己带着台账路径与条数门槛，不把数字写死在代码里
-        delivery_specs.append(Criterion(
-            name="交付·引用", kind="callable", dims=(), self_tested=True, scope="delivery",
-            spec={"target": "sa2.core.evidence:check_citations",
-                  "book": str(evidence_book.path), "min": args.evidence_min}))
-        # 体量：不许拿提纲当报告。阈值在 thresholds.json，改数不改码
-        delivery_specs.append(Criterion(
-            name="交付·体量", kind="callable", dims=(), self_tested=True, scope="delivery",
-            spec={"target": "sa2.core.gate:check_min_chars",
-                  "min": int(config.get("delivery_min_chars"))}))
-        # 列了编号就等于声称出处：arXiv id / DOI 必须能在台账里找到，不许凭记忆写
-        delivery_specs.append(Criterion(
-            name="交付·出处", kind="callable", dims=(), self_tested=True, scope="delivery",
-            spec={"target": "sa2.core.evidence:check_references",
-                  "book": str(evidence_book.path)}))
+    for item in gate_profiles.delivery_specs(profile, book=str(evidence_book.path),
+                                             volume_min=int(config.get("delivery_min_chars"))):
+        delivery_specs.append(Criterion(name=item["name"], kind="callable", dims=(),
+                                        self_tested=True, scope="delivery",
+                                        spec=item["spec"]))
     _register(judge, delivery_specs)
     if not args.fresh and not args.auto_stages and delivery_specs:
         registry.remember_goal(goal, [c.name for c in delivery_specs])
@@ -463,7 +463,10 @@ def main() -> int:
                 # 记成「组织干成了」——与编制失败回退同一个口径。
                 plan = size.single_plan(decl)
                 decision = size.SizeDecision("single", f"回退单人：{exc}", args.budget)
-                org_error = org_error or str(exc)
+                # 只有「调用方要了组织、组织没成立」才算没完成；规模启发式判组队
+                # 但调用方没要组织时，单人就是被请求的形态，不记失败。
+                if args.auto_org:
+                    org_error = org_error or str(exc)
 
     # ④ 编制收口：补阶段门、最后一阶段装配、交付要求下发到写正文的人
     if args.evidence_min:

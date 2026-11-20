@@ -43,6 +43,8 @@ class DevLoop:
         self.timeout = timeout
 
     def run(self, ticket: DevTicket) -> dict:
+        if not ticket.test_cmd:
+            raise DevRefused("工程型工单必须带验收命令（test_cmd）")
         target = (self.root / ticket.target).resolve()
         if not target.is_relative_to(self.root):
             raise DevRefused(f"目标越界：{ticket.target}")

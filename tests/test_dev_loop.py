@@ -69,6 +69,10 @@ class DevLoopTest(unittest.TestCase):
             self._loop(lambda m, max_tokens=None: calls.append(1) or GOOD).run(outside)
         self.assertEqual(calls, [], "越界请求一次模型都不许调")
 
+    def test_ticket_without_test_command_is_refused(self):
+        with self.assertRaises(DevRefused):
+            self._loop(lambda m, max_tokens=None: GOOD).run(replace(self.ticket, test_cmd=[]))
+
     def test_rounds_are_capped_and_failure_is_loud(self):
         out = self._loop(lambda messages, max_tokens=None: BAD).run(
             replace(self.ticket, max_rounds=2))
