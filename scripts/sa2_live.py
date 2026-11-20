@@ -321,7 +321,7 @@ def main() -> int:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
                                    require_gates=False, available_tools=_tool_caps(tool_store),
-                                   headings=heads)
+                                   headings=heads, max_tokens=6000)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
@@ -502,6 +502,12 @@ def main() -> int:
     artifact.write_text(report.get("text") or "", encoding="utf-8")
     evidence = [f"{artifact}:1", f"dispatches={report['dispatches']}"]
     evidence_problems = gate.check_evidence(evidence)
+    # 编制失败后回退单人：可以出稿，但不许记绿——否则「组织干成了一件事」和
+    # 「一个人写完一篇」在读数里长得一模一样（2026-11-20 实测就是这么绿的）。
+    org_fallback = bool(args.auto_org and org_error)
+    if org_fallback:
+        evidence_problems = evidence_problems + [
+            f"编制未成立：{org_error}——回退单人出稿，不算完成"]
     delivery_ok = report["passed"] and not evidence_problems
 
     readings = {
@@ -524,6 +530,7 @@ def main() -> int:
         "reused": reused,
         "subtasks": [s.name for s in subtasks] if subtasks else [],
         "org_generated": bool(args.auto_org and not org_error),
+        "org_fallback": org_fallback,
         "org_error": org_error,
         "tool": tool_path,
         "tool_uses": tool_uses,

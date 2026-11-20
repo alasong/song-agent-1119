@@ -203,7 +203,7 @@ def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
 
 def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2,
              require_gates: bool = True, available_tools=None,
-             headings=()) -> OrgPlan:
+             headings=(), max_tokens: int | None = None) -> OrgPlan:
     """生成编制。被自己的校验拒了就带着拒收原因重来一次——
     不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。"""
     tools_text = "、".join(f"{n}（能力：{c or '未知'}）"
@@ -215,7 +215,11 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: i
         ask = prompt if not feedback else (
             f"{prompt}\n\n上次这份编制被拒，原因：{feedback}\n请修正后重新输出完整 JSON。")
         try:
-            return parse_plan(goal, llm([{"role": "user", "content": ask}]), budget_cap,
+            # 编制的输出是一整份 JSON：5 角色 3 阶段就要两千多字，贴着通道默认上限
+            # （2400 tokens）就会随机被截断，然后整支班子搭不起来。这里单独给额度。
+            ask_kwargs = {"max_tokens": max_tokens} if max_tokens else {}
+            return parse_plan(goal, llm([{"role": "user", "content": ask}], **ask_kwargs),
+                              budget_cap,
                               available_criteria=criteria, require_gates=require_gates,
                               available_tools=available_tools, headings=headings)
         except OrgError as exc:
