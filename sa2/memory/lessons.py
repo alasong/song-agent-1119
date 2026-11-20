@@ -63,6 +63,9 @@ def add(path: str | Path, text: str, when: dict, fix: str = "", origin: str = ""
         "status": "active",
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+    for row in all(path):
+        if row.get("id") == lesson["id"]:
+            return row                  # 同一条经验不重复追加：重复只会撑「支持数」的假象
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as fh:

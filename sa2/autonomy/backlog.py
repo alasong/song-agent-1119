@@ -22,6 +22,7 @@ class Goal:
     dims: tuple[str, ...]
     criteria: tuple[str, ...]
     budget_tokens: int
+    depends_on: tuple[str, ...] = ()   # 前置目标的 id：没完成就别领，领了也是白跑
     source: str = "leader"
     approved: bool = True          # self 提出时必须显式置 True 才能被领取
     status: str = "pending"
@@ -47,6 +48,7 @@ class Backlog:
         data["id"] = goal.gid()
         data["dims"] = list(goal.dims)
         data["criteria"] = list(goal.criteria)
+        data["depends_on"] = list(goal.depends_on)
         data["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as fh:
@@ -73,6 +75,7 @@ class Backlog:
                 goal = Goal(text=data.get("text", ""), dims=tuple(data.get("dims") or ()),
                             criteria=tuple(data.get("criteria") or ()),
                             budget_tokens=int(data.get("budget_tokens") or 0),
+                            depends_on=tuple(data.get("depends_on") or ()),
                             source=data.get("source", "leader"),
                             approved=bool(data.get("approved", True)),
                             status=data.get("status", "pending"),
@@ -84,13 +87,23 @@ class Backlog:
 
     def pick(self) -> Goal | None:
         """按顺序取第一个可领取的：领导给的优先，自助的必须已批准。"""
+        done = self.done_ids()
         for goal in self.all():
             if goal.status != "pending":
                 continue
             if goal.source == "self" and not goal.approved:
                 continue
+            waiting = [dep for dep in goal.depends_on if dep not in done]
+            if waiting:
+                continue
             return goal
         return None
+
+    def waiting(self) -> list[Goal]:
+        """被前置挡住的目标：队列不是空，是「还没到时候」。"""
+        done = self.done_ids()
+        return [goal for goal in self.all()
+                if goal.status == "pending" and any(dep not in done for dep in goal.depends_on)]
 
     def mark(self, goal: Goal, status: str) -> None:
         if status not in STATUSES:

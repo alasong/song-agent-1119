@@ -152,6 +152,13 @@ class PDCA:
         # 为什么不整篇重来：那正是 1.0 的代价；为什么只做最后一阶段：前面的已经过门，
         # 动它们等于把已经判过的东西再赌一次。
         if delivery and self.plan.stages:
+            if self.lesson_path is not None:
+                # 交付门被拒也是一次失败，也得进经验库：只写阶段门拒收的话，
+                # 「编排出问题」这类教训永远不会被记下来（真跑 0 阶段拒收 → 库一直空）。
+                lessonbook.add(self.lesson_path, text="；".join(delivery)[:400],
+                               when={"failure_kind": lessonbook.classify(delivery)},
+                               fix="按交付门拒收原因修最后一阶段，而不是整篇重写",
+                               origin="delivery_gate")
             stage = self.plan.stages[-1]
             if stage.name in before:
                 feedback = self._feedback("；".join(delivery), delivery)
