@@ -120,3 +120,30 @@ class RepoIsCleanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OpenTailTest(unittest.TestCase):
+    """交付里不许留「下一步 / 待办」节（口径同 ~/.dsh/notes/work-loop.md）。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "docs").mkdir()
+        (self.root / "reports").mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_next_step_heading_is_red(self):
+        (self.root / "docs" / "x.md").write_text("# x\n\n## 下一步\n\n- 以后再补\n", encoding="utf-8")
+        result = run_checker(self.root)
+        self.assertEqual(result["rc"], 1)
+        self.assertEqual(result["problems"][0]["kind"], "open-tail")
+
+    def test_todo_heading_in_any_level_is_red(self):
+        (self.root / "docs" / "x.md").write_text("### 待办\n\n- 排队\n", encoding="utf-8")
+        self.assertEqual(run_checker(self.root)["rc"], 1)
+
+    def test_body_text_mentioning_it_is_fine(self):
+        (self.root / "docs" / "x.md").write_text("正文提到「待办」这个词不算留尾巴。\n",
+                                                 encoding="utf-8")
+        self.assertEqual(run_checker(self.root)["rc"], 0)

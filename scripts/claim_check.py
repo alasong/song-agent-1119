@@ -25,6 +25,9 @@ sys.path.insert(0, str(ROOT))
 from sa2.delivery import bare_optimal_lines  # 与交付检查共用一套规则，避免两处各写一份
 
 CERTAIN = ("已经完全验证", "已证明最优", "保证最优", "绝对正确")
+# 交付里不许留「下一步 / 待办」节：该做的当场做，做不到的写「未验证」并给不可得理由。
+# 判据照搬 ~/.dsh/notes/work-loop.md（那边是 grep，这里是同一口径）。
+OPEN_TAIL = re.compile(r"^#{1,4}\s*(下一步|待办)\s*$")
 
 
 def _strip_quotes(line: str) -> str:
@@ -42,6 +45,10 @@ def scan_text(path: Path) -> list[dict]:
     ]
     in_fence = False
     for lineno, line in enumerate(text.splitlines(), 1):
+        if OPEN_TAIL.match(line.strip()):
+            problems.append({"file": str(path), "line": lineno, "kind": "open-tail",
+                             "text": line.strip()[:120],
+                             "why": "交付里留了「下一步/待办」节——该做的当场做，做不到的写「未验证」并给不可得理由"})
         if re.match(r"^\s*```", line):
             in_fence = not in_fence
             continue
