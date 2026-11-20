@@ -24,6 +24,7 @@ STEPS = [
     ("演示：编制复用", [sys.executable, "scripts/demo_plan_reuse.py"]),
     ("演示：指标 + 外环 + 采纳", [sys.executable, "scripts/demo_metrics_outer.py"]),
     ("演示：资源账本", [sys.executable, "scripts/demo_resource.py"]),
+    ("演示：状态机 harness", [sys.executable, "scripts/demo_harness.py"]),
 ]
 
 
