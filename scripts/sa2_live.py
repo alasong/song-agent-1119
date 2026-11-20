@@ -247,6 +247,8 @@ def main() -> int:
     ap.add_argument("--fresh", action="store_true", help="不用跨运行判据库")
     ap.add_argument("--resume", default=None, help="从 state.json 续跑")
     ap.add_argument("--parallel", action="store_true", help="同一阶段的角色并发派活")
+    ap.add_argument("--pool", type=int, default=0,
+                    help="派活经 N 个 worker 进程执行（0=进程内，默认）")
     ap.add_argument("--evidence-min", type=int, default=3,
                     help="交付至少要几条可追引用；0 = 不要求（默认 3）")
     ap.add_argument("--reuse", action="store_true",
@@ -489,14 +491,26 @@ def main() -> int:
     # 切片模式下不能再把整份任务规格塞给执笔角色：它一看见六节就会把整篇写出来，
     # 阶段门随即判它越界。每个阶段的「验收要求」已经写明它只该写哪几节。
     scribe = Scribe(llm, spec=("" if args.auto_stages else spec), max_tokens=args.max_tokens)
-    pdca = PDCA(judge, ledger, plan, scribe, fd.VOCAB, usage=usage,
+    produce = scribe
+    pool = None
+    if args.pool:
+        from sa2.loop.pool_producer import PoolProducer
+        from sa2.loop.workers import WorkerPool
+        pool = WorkerPool(run_dir / "pool", ledger, workers=args.pool, ttl=5.0).start()
+        produce = PoolProducer(pool, scribe.prompt, max_tokens=scribe.max_tokens,
+                               timeout=600, usage=usage)
+    pdca = PDCA(judge, ledger, plan, produce, fd.VOCAB, usage=usage,
                 max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),
                 artifact_dir=run_dir / "stages",
                 hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"),
                 context=lambda: evidence_block(evidence_book),
                 lesson_path=registry.lessons_path())
-    report = pdca.run(decl, evidence=[])
+    try:
+        report = pdca.run(decl, evidence=[])
+    finally:
+        if pool is not None:
+            pool.stop()
 
     tool_uses = record_tool_uses(judge, tool_store)
     artifact = run_dir / "deliverable.md"

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ from sa2.forge import dims as fd
 from sa2.forge import org as fo
 from sa2.forge.org import Role
 from sa2.loop.pdca import PDCA
+from sa2.loop.pool_producer import PoolProducer
 from sa2.loop.supervisor import DispatchQueue, Supervisor
 from sa2.loop.workers import WorkerPool
 from sa2.memory.profiles import RoleProfile, RoleStore
@@ -343,6 +345,47 @@ class WorkerPoolTest(unittest.TestCase):
         self.assertEqual(self.ledger.count("takeover"), 1, "账本要记跨进程接管")
         event = [e for e in self.ledger.read() if e["kind"] == "takeover"][0]
         self.assertEqual(event["payload"]["from"], killed)
+
+
+class PoolProducerTest(unittest.TestCase):
+    """S9：PDCA 的 produce 换成经 worker 进程执行的版本，行为不变。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.ledger = Ledger(self.root / "ledger.jsonl")
+        self.pool = WorkerPool(self.root, self.ledger, workers=1, ttl=2.0).start()
+        self.role = Role(name="执行", kind="executor", duty="写", criteria="齐全", budget=10)
+        self.usage: list[dict] = []
+
+    def tearDown(self):
+        self.pool.stop()
+        self.tmp.cleanup()
+
+    def _produce(self, **kw):
+        options = dict(timeout=30, job_func="fake_llm", max_tokens=64, usage=self.usage)
+        options.update(kw)
+        return PoolProducer(self.pool,
+                            lambda role, stage, up, attempt, fb="", req="": f"请写{stage}",
+                            **options)
+
+    def test_produce_runs_in_a_worker_process(self):
+        out = self._produce()(self.role, "起草", "", 1, "", "")
+        self.assertEqual(out, "请写起草")
+        leased = [e for e in self.ledger.read() if e["kind"] == "dispatch_leased"]
+        self.assertEqual(len(leased), 1)
+        self.assertNotEqual(leased[0]["payload"]["pid"], os.getpid(),
+                            "派活必须在另一个进程里执行")
+        self.assertEqual(self.usage[0]["total_tokens"], 7, "worker 的 usage 要回传给账")
+
+    def test_verifier_does_not_submit_work(self):
+        verifier = Role(name="验证", kind="verifier", duty="判", criteria="有结论", budget=5)
+        self.assertEqual(self._produce()(verifier, "成稿", "", 1, "", ""), "")
+        self.assertEqual(self.ledger.count("dispatch_submitted"), 0)
+
+    def test_worker_failure_is_loud(self):
+        with self.assertRaises(RuntimeError):
+            self._produce(job_func="fail_llm")(self.role, "起草", "", 1, "", "")
 
 
 if __name__ == "__main__":

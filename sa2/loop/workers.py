@@ -92,10 +92,10 @@ def _run_job(job: dict):
     return func(*job.get("args", []), **job.get("kwargs", {}))
 
 
-def worker_main(root: str, name: str, ttl: float) -> None:
+def worker_main(root: str, name: str, ttl: float, ledger_path: str | None = None) -> None:
     """worker 进程主循环：认领 → 心跳 → 执行 → 写结果。"""
     root = Path(root)
-    ledger = Ledger(root / "ledger.jsonl")
+    ledger = Ledger(ledger_path or (root / "ledger.jsonl"))
     stop_file = root / "stop"
     while not stop_file.exists():
         worked = False
@@ -168,7 +168,7 @@ class WorkerPool:
             self._logs.append(log)
             self._procs[name] = subprocess.Popen(
                 [sys.executable, "-m", "sa2.loop.worker",
-                 str(self.root), name, str(self.ttl)],
+                 str(self.root), name, str(self.ttl), str(self.ledger.path)],
                 cwd=str(REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
         self.ledger.append("pool_start", "pool",
                            {"workers": list(self._procs), "ttl": self.ttl})
