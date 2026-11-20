@@ -321,7 +321,8 @@ def main() -> int:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
                                    require_gates=False, available_tools=_tool_caps(tool_store),
-                                   headings=heads, max_tokens=6000)
+                                   headings=heads,
+                                   max_tokens=int(config.get("org_max_tokens")))
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
