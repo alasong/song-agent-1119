@@ -38,6 +38,7 @@ from sa2.forge import org as fo                   # noqa: E402
 from sa2.forge import tools as ft                 # noqa: E402
 from sa2.forge.scribe import Scribe               # noqa: E402
 from sa2.loop import size                         # noqa: E402
+from sa2.loop import outer                        # noqa: E402
 from sa2.loop.pdca import PDCA                    # noqa: E402
 from sa2.memory import registry                   # noqa: E402
 from sa2.memory.cases import CaseBook             # noqa: E402
@@ -321,6 +322,9 @@ def main() -> int:
     plan = None
     decision = None
     plan_store = PlanStore(registry.plans_path())
+    promotions = tuple(str(x.get("text") or "") for x in
+                       outer.active(registry.promotions_path()))
+    promotions = tuple(x for x in promotions if x)
     if args.auto_stages:
         if args.auto_org:
             try:
@@ -328,7 +332,7 @@ def main() -> int:
                                    require_gates=False, available_tools=_tool_caps(tool_store),
                                    headings=heads,
                                    max_tokens=int(config.get("org_max_tokens")),
-                                   store=plan_store, ledger=ledger)
+                                   store=plan_store, ledger=ledger, notes=promotions)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
@@ -461,7 +465,7 @@ def main() -> int:
             try:
                 plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
                                    available_tools=_tool_caps(tool_store),
-                                   store=plan_store, ledger=ledger)
+                                   store=plan_store, ledger=ledger, notes=promotions)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
                                                      f"{len(plan.stages)} 阶段", args.budget)
             except fo.OrgError as exc:
@@ -495,7 +499,8 @@ def main() -> int:
     state_path = Path(args.resume) if args.resume else run_dir / "state.json"
     # 切片模式下不能再把整份任务规格塞给执笔角色：它一看见六节就会把整篇写出来，
     # 阶段门随即判它越界。每个阶段的「验收要求」已经写明它只该写哪几节。
-    scribe = Scribe(llm, spec=("" if args.auto_stages else spec), max_tokens=args.max_tokens)
+    scribe = Scribe(llm, spec=("" if args.auto_stages else spec), max_tokens=args.max_tokens,
+                    notes=promotions)
     produce = scribe
     pool = None
     if args.pool:

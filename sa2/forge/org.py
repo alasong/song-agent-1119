@@ -170,12 +170,16 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
 
 
 def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
-                headings=()) -> str:
+                headings=(), notes=()) -> str:
     shape = ""
     if headings:
         shape = (f"\n- **交付结构已经定了**，有且只有 {len(headings)} 个章节：{list(headings)}\n"
                  f"  请造 {len(headings)} 个阶段，第 i 个阶段负责第 i 个章节；"
                  f"阶段名要能看出它在写哪一节（别用「问题拆解」占了「最新进展」那一节）。")
+    note_block = ""
+    if notes:
+        note_block = ("\n- **外环采纳的经验（务必照做）**：\n"
+                      + "\n".join(f"  - {n}" for n in notes))
     return f"""你是这个组织的 Super，负责搭班子。领导下达了一个目标，你要组一支能交付的团队。
 
 目标：{goal}
@@ -194,7 +198,7 @@ def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
   阶段门 gate_criteria（这一阶段按哪些判据算过）
 - gate_criteria 只能从下面这些**已登记**判据里选，一个都不许自造（自造等于自己发毕业证）：
   {list(criteria) or "（没有可用的判据，先让领导登记）"}
-- **每个角色至少要在某一个阶段的 roles 里出现一次**，没派活就别设这个角色{shape}
+- **每个角色至少要在某一个阶段的 roles 里出现一次**，没派活就别设这个角色{shape}{note_block}
 
 只返回一个 JSON：
 {{"roles":[{{"name":"","kind":"","duty":"","criteria":"","budget":0,"tools":[]}}],
@@ -233,13 +237,13 @@ def _plan_from_dict(data: dict) -> OrgPlan:
 def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: int = 2,
              require_gates: bool = True, available_tools=None,
              headings=(), max_tokens: int | None = None,
-             store=None, ledger=None) -> OrgPlan:
+             store=None, ledger=None, notes=()) -> OrgPlan:
     """生成编制。被自己的校验拒了就带着拒收原因重来一次——
     不给原因的重试等于让它重复同一个错，这一点在环里和在这里是同一个道理。
 
     store 给定时先查复合键：命中就不再问模型，账本记 `plan_reused`。
     """
-    key = store.key(goal, budget_cap, criteria, available_tools, headings) if store else ""
+    key = store.key(goal, budget_cap, criteria, available_tools, headings, notes) if store else ""
     if store:
         cached = store.get(key)
         if cached:
@@ -252,7 +256,7 @@ def plan_org(goal: str, llm, budget_cap: int = 200_000, criteria=(), attempts: i
             return plan
     tools_text = "、".join(f"{n}（能力：{c or '未知'}）"
                           for n, c in (available_tools or {}).items())
-    prompt = _org_prompt(goal, budget_cap, criteria, tools_text, headings)
+    prompt = _org_prompt(goal, budget_cap, criteria, tools_text, headings, notes)
     feedback = ""
     last: OrgError | None = None
     for _ in range(max(1, attempts)):

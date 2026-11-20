@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from sa2.core.metrics import from_run  # noqa: E402
-from sa2.loop.outer import propose, run  # noqa: E402
+from sa2.forge.scribe import Scribe  # noqa: E402
+from sa2.loop.outer import active, adopt, propose, run  # noqa: E402
+from sa2.memory.plans import PlanStore  # noqa: E402
 
 
 def _ledger_lines() -> str:
@@ -76,9 +78,23 @@ def main() -> int:
         print(f"   status={refused['status']} why={refused['why']}")
 
         lines = [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        print("⑥ 采纳之后接回下一轮：promotions.jsonl → 写手/编制提示词")
+        promotions = root / "promotions.jsonl"
+        adopt(adopted, promotions)
+        notes = tuple(x["text"] for x in active(promotions))
+        role = type("Role", (), {"name": "执行", "kind": "executor", "duty": "写", "criteria": "齐全"})()
+        prompt = Scribe(lambda m, max_tokens=None: "x", notes=notes).prompt(
+            role, "起草", "", 1)
+        shows_in_prompt = notes[0] in prompt
+        key_changed = (PlanStore(root / "p.json").key("g", 1, ("c",), (), ())
+                       != PlanStore(root / "p.json").key("g", 1, ("c",), (), (), notes=notes))
+        print(f"   active 经验 {len(notes)} 条；写手提示词含经验={shows_in_prompt}；"
+              f"编制键随经验变化={key_changed}")
+
         ok = (adopted["status"] == "adopted" and rejected["status"] == "rejected"
-              and refused["status"] == "refused" and len(lines) == 2)
-        print(f"⑥ 决定落盘 {len(lines)} 条；判定：{'过' if ok else '红'}")
+              and refused["status"] == "refused" and len(lines) == 2
+              and shows_in_prompt and key_changed)
+        print(f"⑦ 决定落盘 {len(lines)} 条；判定：{'过' if ok else '红'}")
         return 0 if ok else 1
 
 

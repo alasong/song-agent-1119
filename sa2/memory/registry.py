@@ -52,6 +52,11 @@ def plans_path() -> Path:
     return ensure() / "plans.json"
 
 
+def promotions_path() -> Path:
+    """外环采纳的经验：下一轮的写手/编制提示词从这里读。"""
+    return ensure() / "promotions.jsonl"
+
+
 def fingerprint(goal: str) -> str:
     import hashlib
     return hashlib.sha1((goal or "").strip().encode("utf-8")).hexdigest()[:12]

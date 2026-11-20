@@ -28,6 +28,7 @@ class Scribe:
     max_tokens: int = 1200
     upstream_chars: int = 1200
     calls: int = 0
+    notes: tuple = ()           # 外环采纳的经验：下一轮写手看得到，按它调整写法
 
     def __call__(self, role, stage, upstream: str, attempt: int, feedback: str = "",
                 requirements: str = "") -> str:
@@ -54,6 +55,9 @@ class Scribe:
             lines.append(f"## 本阶段的验收要求（逐条满足，判据按它判）\n{requirements.strip()}")
         if feedback.strip():
             lines.append(f"## 上次被拒的原因（重做时必须逐条修掉）\n{feedback.strip()}")
+        if self.notes:
+            lines.append("## 经验（外环采纳，按它调整写法）\n"
+                         + "\n".join(f"- {n}" for n in self.notes))
         lines.append("## 引用规范\n" + knowledge.text("prompts/cite_rules.md").strip())
         lines.append("只写这一阶段的交付物本身，不要解释你在做什么，不要复述要求。")
         return "\n\n".join(lines)

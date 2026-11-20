@@ -40,6 +40,44 @@ def propose(metrics: dict) -> list[dict]:
     return []
 
 
+def adopt(record: dict, path: str | Path) -> dict:
+    """把 adopted 的实验写成 active 的经验，下一轮读它。只收 adopted，别的状态直接拒。"""
+    if record.get("status") != "adopted":
+        raise ValueError(f"只采纳 status=adopted 的实验，收到 {record.get('status')!r}")
+    row = {
+        "id": record.get("id") or f"x-{uuid.uuid4().hex[:8]}",
+        "kind": "prompt_note",
+        "text": record.get("hypothesis") or "",
+        "metric": record.get("metric"),
+        "after": record.get("after"),
+        "at": record.get("at") or time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "status": "active",
+    }
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return row
+
+
+def active(path: str | Path) -> list[dict]:
+    """下一轮读到的经验：只认 status=active 的行。"""
+    target = Path(path)
+    if not target.exists():
+        return []
+    rows: list[dict] = []
+    for line in target.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("status") == "active":
+            rows.append(row)
+    return rows
+
+
 def run(experiment: dict, runner, *, budget_cap: int = 20_000,
         path: str | Path | None = None) -> dict:
     """跑一次实验并落盘。返回的记录里 status ∈ adopted / rejected / refused。"""

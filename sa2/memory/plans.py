@@ -22,13 +22,14 @@ class PlanStore:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path else registry.plans_path()
 
-    def key(self, goal: str, budget_cap: int, criteria, tools, headings) -> str:
+    def key(self, goal: str, budget_cap: int, criteria, tools, headings, notes=()) -> str:
         payload = {
             "goal": (goal or "").strip(),
             "budget": int(budget_cap or 0),
             "criteria": sorted(str(x) for x in (criteria or ())),
             "tools": sorted(f"{n}:{c or ''}" for n, c in dict(tools or {}).items()),
             "headings": [str(x) for x in (headings or ())],
+            "notes": [str(x) for x in (notes or ())],
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
