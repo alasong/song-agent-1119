@@ -31,7 +31,8 @@ class PDCA:
                  max_stage_attempts: int = 2, cases: CaseBook | None = None,
                  state_path: str | Path | None = None, resume: bool = False,
                  artifact_dir: str | Path | None = None, parallel: bool = False,
-                 hand=None, context=None, lesson_path: str | Path | None = None):
+                 hand=None, context=None, lesson_path: str | Path | None = None,
+                 supervisor=None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
@@ -56,6 +57,7 @@ class PDCA:
         self.resume = resume
         self.artifact_dir = Path(artifact_dir) if artifact_dir else None
         self.parallel = parallel
+        self.supervisor = supervisor
 
     def run(self, decl: Declaration, seed: str = "", evidence=None) -> dict:
         # ① 前置门：任何一条不成立，一次调用都不发
@@ -191,6 +193,13 @@ class PDCA:
                             budget=budget, problems=problems, evidence=evidence,
                             chars=len(text), ran=sorted(ran), text=text)
 
+    def _dispatch(self, role, stage, upstream, attempt, feedback, requirements, partial=""):
+        """派活入口：有 supervisor 就经它（死亡→接管），没有就走裸 produce。"""
+        if self.supervisor is not None:
+            return self.supervisor.dispatch(role, stage, upstream, attempt, feedback,
+                                            requirements, partial=partial)
+        return self.produce(role, stage, upstream, attempt, feedback, requirements)
+
     def _produce_stage(self, stage, upstream: str, attempt: int, feedback: str,
                        requirements: str, budget: Budget, counters: dict) -> str | None:
         """跑一遍这个阶段的角色，装配并裁剪成候选。预算耗尽返回 None。
@@ -210,7 +219,7 @@ class PDCA:
             materials = {role.name: self._run_hand(role, stage.name) for role in roles}
             with ThreadPoolExecutor(max_workers=len(roles)) as pool:
                 futures = [(role, pool.submit(
-                    self.produce, role, stage.name,
+                    self._dispatch, role, stage.name,
                     self._with_material(upstream, materials[role.name] + self._context()),
                     attempt, feedback,
                     requirements if role.name == writer else self._supplement(writer)))
@@ -228,9 +237,11 @@ class PDCA:
                 if budget.exhausted():
                     return None
                 material = self._run_hand(role, stage.name) + self._context()
-                out = self.produce(role, stage.name, self._with_material(upstream, material),
-                                   attempt, feedback,
-                                   requirements if role.name == writer else self._supplement(writer))
+                out = self._dispatch(role, stage.name,
+                                     self._with_material(upstream, material),
+                                     attempt, feedback,
+                                     requirements if role.name == writer else self._supplement(writer),
+                                     partial="".join(p for p in parts if p))
                 budget.note(out)
                 counters["dispatches"] += 1
                 self.ledger.append("dispatch", role.name,
