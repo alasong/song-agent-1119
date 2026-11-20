@@ -55,6 +55,8 @@ def candidates(lessons: list[dict], min_support: int = 2, min_rate: float = 0.8)
 
 def write(path: str | Path, found: list[dict]) -> int:
     """把候选追加进文件。同一条（when + ids）不重复写。"""
+    if not found:
+        return 0          # 没有候选就别建文件：空文件会让人以为「提升过一轮，结果是空的」
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     seen = set()

@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -122,6 +123,16 @@ def parse_hn(text: str) -> list[dict]:
     return [{**item, "source": "hn"} for item in items]
 
 
+def _max_index(book: EvidenceBook) -> int:
+    """台账里已用过的最大编号（S12 → 12）。不是编号形态的 id 一律当 0。"""
+    biggest = 0
+    for ev in book.all():
+        found = re.fullmatch(r"S(\d+)", str(ev.evidence_id or ""))
+        if found:
+            biggest = max(biggest, int(found.group(1)))
+    return biggest
+
+
 def record(entries: list[dict], book: EvidenceBook, root, verifier: str,
            start: int = 1) -> list[Evidence]:
     """把取回条目写成证据：内容 = 标题/日期/链接/摘要，落盘并打戳。
@@ -133,14 +144,19 @@ def record(entries: list[dict], book: EvidenceBook, root, verifier: str,
     """
     stamped: list[Evidence] = []
     known = {ev.digest: ev for ev in book.all()}
-    for offset, item in enumerate(entries):
+    # 新编号从「已有编号的最大值 +1」起算，而不是从 len(book)+1 起算：
+    # 去重之后 len 不长，按 len 算会撞上已经用过的编号——实测 `证据 id 重复：S10`
+    # 就是这么来的（同一篇被多只手各取一次、其中一批内部还有重复）。
+    next_index = max(int(start), _max_index(book) + 1)
+    for item in entries:
         content = (f"{item['title']}\n{item['published']}\n{item['url']}\n"
                    f"{item['summary']}")
         digest = digest_of(content)
         if digest in known:
             stamped.append(known[digest])
             continue
-        ev = stamp(item["url"], content, verifier, f"S{start + offset}", root)
+        ev = stamp(item["url"], content, verifier, f"S{next_index}", root)
+        next_index += 1
         known[digest] = book.add(ev)
         stamped.append(known[digest])
     return stamped
