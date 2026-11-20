@@ -10,9 +10,11 @@ import json
 import re
 from dataclasses import dataclass, replace
 
-KINDS = {"planner", "researcher", "expert", "executor", "verifier", "curator"}
+from ..knowledge import load
+
+KINDS = set(load("vocab")["kinds"])
 # 能「去看外面东西」的工具能力；researcher 手上至少得有一件这样的。
-FETCH_CAPABILITIES = {"fetch", "search", "crawl", "api", "database"}
+FETCH_CAPABILITIES = set(load("vocab")["hand_capabilities"])
 
 
 class OrgError(RuntimeError):

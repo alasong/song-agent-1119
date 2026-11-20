@@ -21,28 +21,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+from .. import knowledge
 from ..core.judge import Criterion
 
-TOOL_PROMPT = """写一个 Python 3 检查脚本，判断一份 Markdown 文档是否合格。
-
-任务背景：{goal}
-
-必须检查的东西：
-{checks}
-
-硬要求：
-- 用法：`python3 脚本.py <待检文件>`；合格 exit 0，不合格 exit 1
-- 不合格时把原因打印到 stdout，每行一条
-- 只用标准库；不要读网络；不要写文件
-- 只输出一个 ```python 代码块，不要解释
-
-注意：
-- 代码围栏（```）里的内容不算数——把标题或关键词塞进围栏里，也必须判不合格。
-- 只判**结构**：要求的标题是否存在、标题下是否有内容。不要要求每一节出现特定关键词，
-  也不要要求条目数量——合格样例的正文很短。
-- 一节的内容可以被组织成若干 `###` 子标题：子标题本身不算空节，子标题下面的正文算内容。
-  只有当标题下到下一个 `## ` 之间一个字都没有时，才算「标题下没有内容」。
-"""
+TOOL_PROMPT = knowledge.text("prompts/check_tool.md").strip()
 
 
 def _extract_code(raw: str) -> str:

@@ -21,8 +21,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from ..knowledge import load
+
 DEFAULT_MAX_AGE_DAYS = 180
-MARKER = re.compile(r"\[([A-Za-z]{1,3}\d{1,3})\]")
+# 标记形态与「什么算一条文献编号」都是知识，不是机制：改 formats.json 就能加一种编号体系
+MARKER = re.compile(load("formats")["marker"])
+_TRAILING = ".,;:\u3002\uff0c\uff1b\uff1a\u3001)\uff09\u3011\"'`"
 
 
 class EvidenceError(RuntimeError):
@@ -171,20 +175,23 @@ def check_citations(text: str, spec: dict | None = None) -> list[str]:
     return problems
 
 
-REF = re.compile(
-    r"(?:arxiv[:\s]*|arxiv\.org/abs/)(\d{4}\.\d{4,5})(?:v\d+)?"
-    r"|(?:doi[:\s]*|doi\.org/)(10\.\d{4,9}/[^\s)\]|>,;]+)",
-    re.I,
-)
-
-
 def reference_ids(text: str) -> list[str]:
-    """正文里出现的文献编号（arXiv id / DOI），按首次出现顺序去重并归一。"""
+    """正文里出现的文献编号，按首次出现顺序去重并归一。
+
+    编号形态来自 `formats.json`：每个条目一条正则、一个捕获组。换一种编号体系
+    （PMCID、ISBN…）是加一行数据，不是改这里。
+    """
+    hits: list[tuple[int, str]] = []
+    for spec in load("formats")["reference_ids"]:
+        for match in re.finditer(str(spec["pattern"]), text or "", re.I):
+            # 中文句读会粘在编号尾巴上（正文是中文写的），归一前先削掉
+            found = (match.group(1) or "").strip().rstrip(_TRAILING).lower()
+            if found:
+                hits.append((match.start(1), found))
+    # 按**正文里首次出现**的位置排序，而不是按编号体系分组——读的人看的是文章顺序
     seen: list[str] = []
-    for arxiv_id, doi in REF.findall(text or ""):
-        # 中文句读会粘在 DOI 尾巴上（正文是中文写的），归一前先削掉
-        found = (arxiv_id or doi).strip().rstrip(".,;:。，；：、)）】\"'").lower()
-        if found and found not in seen:
+    for _, found in sorted(hits):
+        if found not in seen:
             seen.append(found)
     return seen
 

@@ -7,21 +7,30 @@ from __future__ import annotations
 
 import os
 
-DEFAULTS: dict[str, float] = {
-    "single_floor": 20_000,   # 低于这个预算不组队
-    "team_dims": 2,           # 声明这么多维度就该分工
-    "team_criteria": 3,       # 声明这么多判据就该独立验证
-    "tool_timeout": 10,       # 生成的检查器单次执行上限（秒）
-}
+from .knowledge import load
+
+
+def values() -> dict[str, float]:
+    """现有阈值：数在数据文件里，代码里没有默认值可落。"""
+    return {key: item["value"] for key, item in load("thresholds")["values"].items()}
+
+
+def provenance(key: str) -> dict:
+    """这个数从哪次实测来、哪天定的。改它之前先看这里。"""
+    table = load("thresholds")["values"]
+    if key not in table:
+        raise KeyError(f"未登记的配置项：{key}（要加先进 thresholds.json）")
+    return dict(table[key])
 
 
 def get(key: str):
-    if key not in DEFAULTS:
-        raise KeyError(f"未登记的配置项：{key}（要加先写进 DEFAULTS）")
+    table = load("thresholds")["values"]
+    if key not in table:
+        raise KeyError(f"未登记的配置项：{key}（要加先进 thresholds.json）")
+    default = table[key]["value"]
     raw = os.environ.get(f"XM_SA2_{key.upper()}")
     if raw is None:
-        return DEFAULTS[key]
-    default = DEFAULTS[key]
+        return default
     try:
         return int(raw) if isinstance(default, int) else float(raw)
     except ValueError as exc:

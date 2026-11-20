@@ -7,16 +7,9 @@
 """
 from __future__ import annotations
 
-VOCAB: dict[str, str] = {
-    "correctness": "正确性",
-    "security": "安全性",
-    "performance": "性能",
-    "api_design": "接口设计",
-    "test_quality": "测试质量",
-    "maintainability": "可维护性",
-    "reliability": "可靠性",
-    "data_privacy": "数据隐私",
-}
+from ..knowledge import load
+
+VOCAB: dict[str, str] = dict(load("vocab")["dims"])   # 词表在 sa2/knowledge/data/vocab.json
 
 
 def validate(selected) -> list[str]:

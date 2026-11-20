@@ -42,8 +42,9 @@ from sa2.memory.cases import CaseBook             # noqa: E402
 from sa2.memory.tools import ToolStore            # noqa: E402
 from sa2.llm import complete_usage                # noqa: E402
 
-HAND_TOOLS = ("fetch:arxiv", "fetch:hn")   # 宿主级的手：论文一条线，工程与讨论一条线
-SOURCE_OF = {"fetch:arxiv": "arxiv", "fetch:hn": "hn"}
+# 宿主级的手：从 sources.json 派生，不在这里列一遍——加源只改数据
+SOURCE_OF = {f"fetch:{name}": name for name in fetch.source_names()}
+HAND_TOOLS = tuple(SOURCE_OF)
 GOAL = "写一份「Agent 递归自我改进的最小可行实验」方案"
 
 SPEC = """必须包含：## 一、基线
@@ -74,20 +75,24 @@ def _register(judge: Judge, specs) -> list[str]:
 
 def _source_query(llm, goal: str, role, source: str = "arxiv") -> str:
     """让模型写一条检索语句：题面里的缩写（如 RSI）只有它自己分得清是哪一行。"""
-    where = (f"arXiv API 的 search_query（形如 all:\"xxx\"）" if source == "arxiv"
-             else "Hacker News 搜索（普通英文短语，不要字段前缀）")
-    ask = (f"给 {where} 写一条查询，主题：{goal}；检索意图：{role.duty}。"
+    cfg = fetch.config(source)
+    label = str(cfg.get("label") or source)
+    prefixed = str(cfg.get("query_style")) == "field-prefixed"
+    where = (f'{label} 的检索语句（形如 all:"xxx"）' if prefixed
+             else f"{label} 搜索（普通英文短语，不要字段前缀）")
+    ask = (f"给 {where}，主题：{goal}；检索意图：{role.duty}。"
            f"**只用英文关键词**，不要出现中文；**查询要短：2–4 个词**，不要 AND/OR 列表；"
            f"只返回这一条查询，不要解释。")
     raw = llm([{"role": "user", "content": ask}], max_tokens=80) or ""
     first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
-    # 中文关键词在 arXiv / HN 上基本等于零命中：先剥成 ASCII，剥完为空就当场报，不硬查
+    # 中文关键词在英文检索源上基本等于零命中：先剥成 ASCII，剥完为空就当场报，不硬查
     ascii_only = re.sub(r"[^\x20-\x7e]", " ", first).strip()
     query = re.sub(r"\s+", " ", ascii_only).strip("`").strip()
     if not query:
         raise fetch.FetchError(f"模型没给出可用的英文查询（原始：{first[:60]!r}）")
-    if source != "arxiv":
-        return re.sub(r"\s*[A-Za-z]+:", " ", query).strip()   # HN 不认 all:/title: 这类前缀
+    if not prefixed:
+        # 这类源不认 all:/title: 前缀，原样传会被当成关键词的一部分
+        return re.sub(r"\s*[A-Za-z]+:", " ", query).strip()
     return query if ":" in query else f'all:"{query}"'
 
 
@@ -106,9 +111,11 @@ def _simplify_candidates(query: str, source: str = "arxiv") -> list[str]:
     else:
         words = [w for w in re.findall(r"[A-Za-z][A-Za-z\-]+", ascii_only)
                  if w.lower() not in {"and", "or", "not", "all", "latest", "recent"}]
+    prefixed = str(fetch.config(source).get("query_style")) == "field-prefixed"
+
     def wrap(kept: list[str]) -> str:
         phrase = " ".join(kept)
-        return f'all:"{phrase}"' if source == "arxiv" else phrase
+        return f'all:"{phrase}"' if prefixed else phrase
 
     seen = {query.strip()}
     out: list[str] = []
@@ -204,9 +211,9 @@ def record_tool_uses(judge, store: ToolStore) -> list[str]:
 def _tool_caps(store: ToolStore) -> dict[str, str]:
     """工具名 → 能力标签。编制校验靠它判「这个角色手上是不是真有能用的手」。"""
     caps = {name: str(entry.get("capability") or "") for name, entry in store.all().items()}
-    # 宿主级的手：不进工具库，但编制可以把它挂到角色上
-    caps["fetch:arxiv"] = "fetch"
-    caps["fetch:hn"] = "fetch"
+    # 宿主级的手：不进工具库，但编制可以把它挂到角色上；能力标签同样来自配置
+    for tool, source in SOURCE_OF.items():
+        caps[tool] = str(fetch.config(source)["capability"])
     return caps
 
 

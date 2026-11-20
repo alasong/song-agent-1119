@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "dims": {
+    "correctness": "正确性",
+    "security": "安全性",
+    "performance": "性能",
+    "api_design": "接口设计",
+    "test_quality": "测试质量",
+    "maintainability": "可维护性",
+    "reliability": "可靠性",
+    "data_privacy": "数据隐私"
+  },
+  "kinds": [
+    "planner",
+    "researcher",
+    "expert",
+    "executor",
+    "verifier",
+    "curator"
+  ],
+  "capabilities": [
+    "fetch",
+    "search",
+    "crawl",
+    "api",
+    "database"
+  ],
+  "hand_capabilities": [
+    "fetch",
+    "search",
+    "crawl",
+    "api",
+    "database"
+  ],
+  "events": {
+    "stage_kind": [
+      "plan",
+      "retrieve",
+      "analyze",
+      "write",
+      "verify",
+      "tool_gen",
+      "deliver"
+    ],
+    "failure_kind": [
+      "zero_hit",
+      "empty_output",
+      "missing_heading",
+      "subsection_rejected",
+      "too_short",
+      "unsigned_reference",
+      "budget_stop",
+      "org_rejected",
+      "criteria_rejected"
+    ]
+  }
+}

@@ -1,27 +1,25 @@
 """手：真的去取一次数据。
 
-为什么是宿主级模块而不是模型生成的工具：模型写的取数脚本没法自证——它说抓到了就是抓到了。
-这里只做一件事：给查询，返回条目（编号/标题/发布日期/摘要/链接），并且**每次取回都原样
-落盘、由系统打戳成证据**（`sa2/core/evidence.py`）。时间锚点因此来自系统，不来自模型。
+源从哪来：`sa2/knowledge/data/sources.json`。host、URL 模板、用哪个解析器、挂着什么能力，
+全在数据里——**加一个源改数据文件，不改这个模块**。
 
-边界（写死，不做成配置）：
-- 只走 https，只允许白名单里的 host（现在只有 arXiv 的 export 域名）；
-- 单次超时 20s、最多 50 条、失败重试 1 次；
-- **失败就大声报错**，不返回空列表冒充「没搜到」。
+这里只剩三件机制上的事，都不该数据化：
+1. 白名单校验：host 取自配置，但「只走 https、只认白名单」这条规则不交给数据；
+2. 网络层重试一次就停（4xx 与解析失败不重试——重试不会让接口变对）；
+3. **失败就大声报**，不返回空列表冒充「没搜到」。
+
+落盘打戳在 `record()`：每次取回都原样落成证据，时间锚点来自系统，不来自模型。
 """
 from __future__ import annotations
 
-import re
 import time
 import urllib.parse
 import urllib.request
 
+from . import parsers
 from .core.evidence import Evidence, EvidenceBook, digest_of, stamp
+from .knowledge import load
 
-ALLOWED_HOSTS = ("export.arxiv.org",)
-HN_ALLOWED = ("hn.algolia.com",)
-HN_BASE = "https://hn.algolia.com/api/v1/search"
-BASE = "https://export.arxiv.org/api/query"
 MAX_RESULTS = 50
 TIMEOUT = 20
 RETRY_SLEEP = 2.0
@@ -31,12 +29,30 @@ class FetchError(RuntimeError):
     """取数失败。不许静默降级成空结果。"""
 
 
-def _check(url: str, allowed=ALLOWED_HOSTS) -> None:
+def source_names() -> list[str]:
+    """配置里登记过的源名。宿主的工具清单也从这里派生。"""
+    return sorted(load("sources")["sources"])
+
+
+def config(source: str) -> dict:
+    sources = load("sources")["sources"]
+    if source not in sources:
+        raise FetchError(f"没有这个源：{source!r}（已登记 {sorted(sources)}）")
+    return sources[source]
+
+
+def query_url(query: str, max_results: int = 5, source: str = "arxiv") -> str:
+    cfg = config(source)
+    n = max(1, min(int(max_results), MAX_RESULTS))
+    return cfg["url"].format(q=urllib.parse.quote_plus((query or "").strip()), n=n)
+
+
+def _check(url: str, host: str) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         raise FetchError(f"只允许 https，拿到 {parsed.scheme!r}")
-    if parsed.hostname not in allowed:
-        raise FetchError(f"白名单外的 host：{parsed.hostname!r}（允许 {allowed}）")
+    if parsed.hostname != host:
+        raise FetchError(f"白名单外的 host：{parsed.hostname!r}（这条源登记的是 {host!r}）")
 
 
 def _default_transport(url: str, timeout: int) -> str:
@@ -44,54 +60,66 @@ def _default_transport(url: str, timeout: int) -> str:
         return resp.read().decode("utf-8", "replace")
 
 
-def query_url(query: str, max_results: int = 5) -> str:
-    return BASE + "?" + urllib.parse.urlencode({
-        "search_query": query, "start": 0, "max_results": max_results,
-        "sortBy": "submittedDate", "sortOrder": "descending",
-    })
-
-
-def parse_atom(text: str) -> list[dict]:
-    """把 Atom feed 拆成条目。取不到条目就是失败，不是「零结果」。"""
-    entries: list[dict] = []
-    for block in re.findall(r"<entry>(.*?)</entry>", text or "", re.S):
-        def pick(tag: str) -> str:
-            found = re.search(rf"<{tag}>(.*?)</{tag}>", block, re.S)
-            return " ".join(found.group(1).split()) if found else ""
-
-        link = re.search(r'<link[^>]+href="([^"]+)"', block)
-        entries.append({
-            "arxiv_id": pick("id").rsplit("/", 1)[-1],
-            "title": pick("title"),
-            "published": pick("published")[:10],
-            "summary": pick("summary"),
-            "url": link.group(1) if link else pick("id"),
-        })
-    if not entries:
-        raise FetchError("feed 里没有 entry：要么查询没人答，要么接口变了")
-    return entries
-
-
-def arxiv(query: str, max_results: int = 5, *, transport=None,
+def fetch(source: str, query: str, max_results: int = 5, *, transport=None,
           timeout: int = TIMEOUT) -> list[dict]:
-    """取一批条目。transport 可注入，测试不碰网络。"""
+    """按源取一批条目。transport 可注入，测试不碰网络。"""
     if not (query or "").strip():
         raise FetchError("查询为空")
+    cfg = config(source)
     n = max(1, min(int(max_results), MAX_RESULTS))
-    url = query_url(query.strip(), n)
-    _check(url)
+    url = query_url(query, n, source)
+    _check(url, str(cfg["host"]))
     send = transport or _default_transport
     last: Exception | None = None
     for attempt in (1, 2):
         try:
-            return parse_atom(send(url, timeout))[:n]
-        except FetchError:
-            raise
+            text = send(url, timeout)
         except Exception as exc:              # 网络层：重试一次就停
             last = exc
             if attempt == 1:
                 time.sleep(RETRY_SLEEP)
+                continue
+            break
+        try:
+            entries = parsers.parse(str(cfg["parser"]), text)[:n]
+        except parsers.ParseError as exc:     # 解析失败是定论，重试不会让接口变对
+            raise FetchError(str(exc)) from exc
+        # 每条取回的条目都带上来源：证据台账、素材块、事后核查都靠这个字段认路
+        return [{**item, "source": source} for item in entries]
     raise FetchError(f"取数失败：{type(last).__name__}: {last}") from last
+
+
+def arxiv(query: str, max_results: int = 5, *, transport=None,
+          timeout: int = TIMEOUT) -> list[dict]:
+    return fetch("arxiv", query, max_results, transport=transport, timeout=timeout)
+
+
+def hn(query: str, max_results: int = 5, *, transport=None,
+       timeout: int = TIMEOUT) -> list[dict]:
+    return fetch("hn", query, max_results, transport=transport, timeout=timeout)
+
+
+def search(source: str, query: str, n: int = 5) -> list[dict]:
+    """按源取数。源名必须登记过——不许在外面现编一个。"""
+    return fetch(source, query, n)
+
+
+def parse_atom(text: str) -> list[dict]:
+    """兼容入口：老的调用方只认 Atom。条目同时给 `id` 与 `arxiv_id`。"""
+    try:
+        items = parsers.parse("arxiv_atom", text)
+    except parsers.ParseError as exc:
+        raise FetchError(str(exc)) from exc
+    return [{**item, "arxiv_id": item["id"]} for item in items]
+
+
+def parse_hn(text: str) -> list[dict]:
+    """兼容入口：老的调用方只认 HN JSON。条目带上来源。"""
+    try:
+        items = parsers.parse("hn_json", text)
+    except parsers.ParseError as exc:
+        raise FetchError(str(exc)) from exc
+    return [{**item, "source": "hn"} for item in items]
 
 
 def record(entries: list[dict], book: EvidenceBook, root, verifier: str,
@@ -116,55 +144,3 @@ def record(entries: list[dict], book: EvidenceBook, root, verifier: str,
         known[digest] = book.add(ev)
         stamped.append(known[digest])
     return stamped
-
-def hn_url(query: str, max_results: int = 5) -> str:
-    return HN_BASE + "?" + urllib.parse.urlencode({
-        "query": query, "tags": "story", "hitsPerPage": max_results})
-
-
-def parse_hn(text: str) -> list[dict]:
-    """Hacker News（Algolia）的 JSON 拆成同一形状的条目。"""
-    import json as _json
-    try:
-        data = _json.loads(text or "{}")
-    except _json.JSONDecodeError as exc:
-        raise FetchError(f"HN 返回的不是 JSON：{exc}") from exc
-    entries = []
-    for hit in data.get("hits") or []:
-        title = " ".join(str(hit.get("title") or "").split())
-        if not title:
-            continue
-        link = hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
-        entries.append({
-            "arxiv_id": f"hn-{hit.get('objectID')}",
-            "title": title,
-            "published": str(hit.get("created_at") or "")[:10],
-            "summary": " ".join(str(hit.get("story_text") or title).split())[:600],
-            "url": link,
-            "source": "hn",
-        })
-    if not entries:
-        raise FetchError("HN 没有命中：要么查询没人答，要么接口变了")
-    return entries
-
-
-def hn(query: str, max_results: int = 5, *, transport=None, timeout: int = TIMEOUT) -> list[dict]:
-    """第二个源：HN 的讨论与外部链接。和 arXiv 互补——那里是论文，这里是工程与讨论。"""
-    if not (query or "").strip():
-        raise FetchError("查询为空")
-    n = max(1, min(int(max_results), MAX_RESULTS))
-    url = hn_url(query.strip(), n)
-    _check(url, HN_ALLOWED)
-    send = transport or _default_transport
-    return parse_hn(send(url, timeout))[:n]
-
-
-SOURCES = {"arxiv": arxiv, "hn": hn}
-
-
-def search(source: str, query: str, n: int = 5) -> list[dict]:
-    """按源取数。源名必须登记过——不许在外面现编一个。"""
-    func = SOURCES.get(source)
-    if func is None:
-        raise FetchError(f"没有这个源：{source!r}（已登记 {sorted(SOURCES)}）")
-    return func(query, n)

@@ -528,3 +528,40 @@ sa2 为每个阶段生成并登记对应判据，而这又回到「判据的原�
 
 真跑 `rsi-ai/20261120-084154`（12,009 tokens、`passed=True`）：4 把刀各记 1 次使用、
 带 `last_used` 时间戳。下一轮没人用的工具就有据可淘汰了。
+
+### 9.15 知识面落地：世界知识是数据，机制是代码（2026-11-20）
+
+上面 9.14 那轮修的都是「事故」，但每次事故都只能靠人改 `.py` 才能进系统——加一个数据源
+要改 `fetch.py` 常量、拼 URL、写解析、再在宿主里登记三处；一条教训只能追加进同一个提示词
+字符串，于是它对所有场景永远生效。根因不是某处写死，而是**知识唯一的进入通道是人改代码**。
+
+这一版把通道换掉：
+
+| 住哪 | 放什么 | 谁读 |
+|---|---|---|
+| `sa2/knowledge/data/sources.json` | 源的 host / URL 模板 / 解析器名 / 能力标签 / 查询风格 | `fetch`、宿主的工具清单 |
+| `sa2/knowledge/data/vocab.json` | 维度词表、角色种类、能力词表、**事件空间（经验的条件值域）** | `dims`、`org`、`lessons` |
+| `sa2/knowledge/data/formats.json` | 引用标记形态、文献编号形态（每条一个正则） | `evidence` |
+| `sa2/knowledge/data/thresholds.json` | 阈值 + **出处**（值、来源、日期） | `config` |
+| `sa2/knowledge/data/prompts/*.md` | 造检查器、引用规范的提示片段 | `forge.tools`、`forge.scribe` |
+| `~/xm-runs/sa2/registry/lessons.jsonl` | 经验：`when` 条件 + 对策 + 命中统计 | `memory.lessons`（下一步接进 `_feedback`） |
+
+装载器 `sa2/knowledge/loader.py` 的四条规则：缺文件/缺键/未知键/版本不认识 → 当场抛
+`KnowledgeError`；顶层键白名单（写错一个键就红）；`sources` 的 host 必须在 url 里出现；
+`thresholds` 每项必须带 `source` 与 `date`——没有出处的数不知道哪天该改它。
+
+两个悬置点当场定死：
+
+1. **解析器怎么解析**：显式注册表 + 名字（`sa2/parsers.py` 的 `PARSERS`），不做 importlib
+   自动发现。靠反射猜约定已经在判据那层猜过一次（`judge._run_callable` 数参数个数），不重复。
+   边界：同协议换站点改数据，换协议才加解析函数——让数据描述任意解析等于在 JSON 里写解释器。
+2. **`when` 键域怎么定**：枚举白名单（`vocab.json.events`：`stage_kind` 7 个值、
+   `failure_kind` 9 个值），写入与查询都校验。条件一旦可以自由拼文本，「按情境匹配」就退化成
+   按关键词匹配，最后又变回一条全局规则。
+
+**真跑验证接线**（`rsi-kn/20261120-091735`）：两只来源各取一次（arxiv 5 条、hn 5 条），
+台账 9 条证据、9 个不同 digest，7 次派活、0 拒绝、`passed=True`、`citation_problems` 空。
+交付 3 节、717 字，引用全部落在真实取回的 `[S1]–[S4]`。
+
+还没做的：`evolution`（经验→机制候选，必须过 registry 登记）与 `lessons` 接进
+`pdca._feedback`；运行期经验导出回仓库的脚本也还没写。

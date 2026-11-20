@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "sources": {
+    "arxiv": {
+      "label": "arXiv",
+      "host": "export.arxiv.org",
+      "url": "https://export.arxiv.org/api/query?search_query={q}&start=0&max_results={n}&sortBy=submittedDate&sortOrder=descending",
+      "query_style": "field-prefixed",
+      "fallback": ["drop_word", "drop_to_two"],
+      "parser": "arxiv_atom",
+      "capability": "fetch"
+    },
+    "hn": {
+      "label": "Hacker News",
+      "host": "hn.algolia.com",
+      "url": "https://hn.algolia.com/api/v1/search?query={q}&tags=story&hitsPerPage={n}",
+      "query_style": "plain",
+      "fallback": ["drop_word", "drop_to_two"],
+      "parser": "hn_json",
+      "capability": "fetch"
+    }
+  }
+}
