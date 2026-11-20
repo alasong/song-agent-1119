@@ -241,5 +241,68 @@ class PDCATakeoverTest(unittest.TestCase):
                          "没做完的承诺还在档案上，下一任接着认")
 
 
+class MidStageResumeTest(unittest.TestCase):
+    """S3：进程在阶段中途没了，重启后不重跑本阶段已完成的角色。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.plan = fo.parse_plan("目标", ORG_JSON)
+        self.state = self.root / "state.json"
+        self.decl = Declaration(goal="写东西", dims=("correctness", "test_quality"),
+                                criteria=("起草齐全", "成稿齐全"), budget_tokens=100_000)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_resume_skips_roles_already_done_in_stage(self):
+        calls = []
+
+        def dying(role, stage, upstream, attempt, feedback="", requirements=""):
+            calls.append((role.name, stage))
+            if role.kind != "executor":
+                return ""
+            raise SystemExit("kill -9 模拟：Exception 拦不住，supervisor 也不该接")
+
+        pdca = PDCA(_judge(), Ledger(self.root / "l1.jsonl"), self.plan, dying,
+                    fd.VOCAB, state_path=self.state)
+        with self.assertRaises(SystemExit):
+            pdca.run(self.decl)
+
+        saved = json.loads(self.state.read_text(encoding="utf-8"))
+        self.assertEqual([p["role"] for p in saved["partial"]["parts"]], ["规划"],
+                         "本阶段已完成角色的产出必须落盘，否则重启只能重跑")
+        calls.clear()
+
+        def good(role, stage, upstream, attempt, feedback="", requirements=""):
+            calls.append((role.name, stage))
+            if role.kind != "executor":
+                return ""
+            if stage == "起草":
+                return "## 一、a\n## 二、b\n"
+            return "## 一、a\n## 二、b\n## 三、c\n"
+
+        pdca2 = PDCA(_judge(), Ledger(self.root / "l2.jsonl"), self.plan, good,
+                     fd.VOCAB, state_path=self.state, resume=True)
+        report = pdca2.run(self.decl)
+        self.assertTrue(report["passed"], report)
+        self.assertNotIn(("规划", "起草"), calls, "重启后不重跑已完成角色")
+        self.assertIn(("执行", "起草"), calls)
+
+    def test_state_has_no_partial_after_stage_passes(self):
+        def good(role, stage, upstream, attempt, feedback="", requirements=""):
+            if role.kind != "executor":
+                return ""
+            return "## 一、a\n## 二、b\n## 三、c\n"
+
+        pdca = PDCA(_judge(), Ledger(self.root / "l.jsonl"), self.plan, good,
+                    fd.VOCAB, state_path=self.state)
+        report = pdca.run(self.decl)
+        self.assertTrue(report["passed"], report)
+        saved = json.loads(self.state.read_text(encoding="utf-8"))
+        self.assertNotIn("partial", saved, "阶段过了，断点要落在下一个阶段，不能留着旧 partial")
+        self.assertEqual(saved["stage_index"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

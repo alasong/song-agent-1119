@@ -81,6 +81,7 @@ class PDCA:
         rejects: list[dict] = []
         redone: list[str] = []
         start = 0
+        partial = None
 
         # 断点续跑：多阶段编制一次十几二十次调用，中途挂掉全丢的代价太高
         if self.resume and self.state_path and self.state_path.exists():
@@ -89,7 +90,11 @@ class PDCA:
             text = state.get("text") or text
             ran = set(state.get("ran") or [])
             budget.spent_seed = int(state.get("spent") or 0)
-            self.ledger.append("resume", "loop", {"from_stage": start, "spent": budget.spent_seed})
+            partial = state.get("partial")
+            done_roles = [p.get("role") for p in (partial or {}).get("parts") or []]
+            self.ledger.append("resume", "loop",
+                               {"from_stage": start, "spent": budget.spent_seed,
+                                "done_roles": done_roles})
 
         counters = {"dispatches": 0}
         before: dict[str, str] = {}      # 阶段成功时的上游快照：交付门回退要从这里重做
@@ -99,8 +104,13 @@ class PDCA:
             requirements = self._requirements(stage)
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
+                seeded = partial if (partial
+                                     and partial.get("stage_index") == index
+                                     and partial.get("attempt") == attempt) else None
                 assembled = self._produce_stage(stage, text, attempt, feedback,
-                                                requirements, budget, counters)
+                                                requirements, budget, counters,
+                                                index=index, text_before=text, ran=ran,
+                                                seeded=seeded)
                 if assembled is None:
                     self.ledger.append("budget_stop", "loop", budget.snapshot())
                     return self._report(False, budget.why(f"{stage.name} 之前"),
@@ -201,19 +211,28 @@ class PDCA:
         return self.produce(role, stage, upstream, attempt, feedback, requirements)
 
     def _produce_stage(self, stage, upstream: str, attempt: int, feedback: str,
-                       requirements: str, budget: Budget, counters: dict) -> str | None:
+                       requirements: str, budget: Budget, counters: dict,
+                       index: int | None = None, text_before: str = "",
+                       ran: set | None = None, seeded: dict | None = None) -> str | None:
         """跑一遍这个阶段的角色，装配并裁剪成候选。预算耗尽返回 None。
 
         阶段循环与「交付门回退」共用这一段：回退必须走同一条派活路径，
         否则回退出来的东西与正常产出的形状会不一样。
+
+        seeded 是角色级断点：本阶段已完成的角色直接取旧产出，不再派活。
         """
         self._stage_in_flight = stage.name
         writer = self._writer(stage)
         roles = [self.plan.role(name) for name in stage.roles]
+        done = {str(x.get("role")): str(x.get("out") or "")
+                for x in (seeded or {}).get("parts") or []}
         parts: list[str] = []
+        finished: list[tuple[str, str]] = []
         # 同一阶段的角色互不依赖（都只读上游、互不写对方），这是唯一不会破坏
         # 交接顺序的并发粒度；预算仍串行入账，避免多线程计费打架。
-        if self.parallel and len(roles) > 1:
+        # seeded 存在时强制串行：恢复的正确性优先于并发速度；并发分支也不写 partial
+        # （多线程同时盖一个 state 会互相丢）。
+        if self.parallel and len(roles) > 1 and not done:
             if budget.exhausted():
                 return None
             materials = {role.name: self._run_hand(role, stage.name) for role in roles}
@@ -234,6 +253,10 @@ class PDCA:
                     parts.append(out)
         else:
             for role in roles:
+                if role.name in done:
+                    parts.append(done[role.name])
+                    finished.append((role.name, done[role.name]))
+                    continue
                 if budget.exhausted():
                     return None
                 material = self._run_hand(role, stage.name) + self._context()
@@ -247,6 +270,8 @@ class PDCA:
                 self.ledger.append("dispatch", role.name,
                                    {"stage": stage.name, "attempt": attempt, "chars": len(out)})
                 parts.append(out)
+                finished.append((role.name, out))
+                self._write_partial(index, stage, attempt, finished, text_before, ran, budget)
         assembled = "\n\n".join(p for p in parts if p and p.strip())
         # 结构由系统保证，不靠模型自觉：本阶段只准留自己那几节，越界部分裁掉。
         # 实测模型即使被要求「只写这一片」，也会把整篇写出来——五轮同向失败。
@@ -254,6 +279,19 @@ class PDCA:
         if allowed:
             assembled = self._trim(assembled, allowed)
         return assembled
+
+    def _write_partial(self, index, stage, attempt, finished, text_before, ran, budget):
+        """角色级断点：每完成一个角色落一次；重启不重跑本阶段已完成的人。"""
+        if self.state_path is None or index is None:
+            return
+        self.state_path.write_text(json.dumps({
+            "stage_index": index,
+            "text": text_before,
+            "ran": sorted(ran or ()),
+            "spent": budget.spent,
+            "partial": {"stage_index": index, "stage": stage.name, "attempt": attempt,
+                        "parts": [{"role": name, "out": out} for name, out in finished]},
+        }, ensure_ascii=False), encoding="utf-8")
 
     @staticmethod
     def _assemble(stage, upstream: str, assembled: str) -> str:
