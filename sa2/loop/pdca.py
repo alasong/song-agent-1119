@@ -78,7 +78,6 @@ class PDCA:
         ran: set[str] = set()
         rejects: list[dict] = []
         redone: list[str] = []
-        dispatches = 0
         start = 0
 
         # 断点续跑：多阶段编制一次十几二十次调用，中途挂掉全丢的代价太高
@@ -90,84 +89,33 @@ class PDCA:
             budget.spent_seed = int(state.get("spent") or 0)
             self.ledger.append("resume", "loop", {"from_stage": start, "spent": budget.spent_seed})
 
+        counters = {"dispatches": 0}
+        before: dict[str, str] = {}      # 阶段成功时的上游快照：交付门回退要从这里重做
         for index, stage in enumerate(self.plan.stages[start:], start=start):
             # 判据对生成方必须是可见的：看不见要求，只能猜，猜不中就红两次。
             # 可见 ≠ 可控：生成方知道要求是什么，但改不了判据本身。
-            self._stage_in_flight = stage.name
             requirements = self._requirements(stage)
-            writer = self._writer(stage)
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
-                parts: list[str] = []
-                roles = [self.plan.role(name) for name in stage.roles]
-                # 同一阶段的角色互不依赖（都只读上游、互不写对方），所以这是唯一
-                # 不会破坏交接顺序的并发粒度；预算仍串行入账，避免多线程计费打架。
-                if self.parallel and len(roles) > 1:
-                    if budget.exhausted():
-                        self.ledger.append("budget_stop", "loop", budget.snapshot())
-                        return self._report(False, budget.why(f"{stage.name} 之前"),
-                                            redone=redone, rejects=rejects,
-                                            dispatches=dispatches, budget=budget)
-                    materials = {role.name: self._run_hand(role, stage.name) for role in roles}
-                    with ThreadPoolExecutor(max_workers=len(roles)) as pool:
-                        futures = [(role, pool.submit(
-                            self.produce, role, stage.name,
-                            self._with_material(text, materials[role.name] + self._context()),
-                            attempt, feedback,
-                            requirements if role.name == writer else self._supplement(writer)))
-                                   for role in roles]
-                        for role, future in futures:
-                            out = future.result()
-                            budget.note(out)
-                            dispatches += 1
-                            self.ledger.append("dispatch", role.name,
-                                               {"stage": stage.name, "attempt": attempt,
-                                                "chars": len(out), "parallel": True})
-                            parts.append(out)
-                else:
-                    for role in roles:
-                        if budget.exhausted():
-                            self.ledger.append("budget_stop", "loop", budget.snapshot())
-                            return self._report(False, budget.why(f"{stage.name}·{role.name} 之前"),
-                                                redone=redone, rejects=rejects,
-                                                dispatches=dispatches, budget=budget)
-                        material = self._run_hand(role, stage.name) + self._context()
-                        out = self.produce(role, stage.name, self._with_material(text, material),
-                                       attempt, feedback,
-                                       requirements if role.name == writer else self._supplement(writer))
-                        budget.note(out)
-                        dispatches += 1
-                        self.ledger.append("dispatch", role.name,
-                                           {"stage": stage.name, "attempt": attempt, "chars": len(out)})
-                        parts.append(out)
-
-                assembled = "\n\n".join(p for p in parts if p and p.strip())
-                # 结构由系统保证，不靠模型自觉：本阶段只准留自己那几节，越界部分裁掉。
-                # 实测模型即使被要求「只写这一片」，也会把整篇写出来——五轮同向失败。
-                allowed = self._allowed(stage)
-                if allowed:
-                    assembled = self._trim(assembled, allowed)
-                if stage.mode == "append" and text.strip():
-                    candidate = text.rstrip() + "\n\n" + assembled
-                else:
-                    candidate = assembled
-                problems: list[str] = []
-                for name in stage.gate_criteria:
-                    verdict = self.judge.run(name, candidate)
-                    ran.add(name)
-                    problems.extend(verdict.problems)
+                assembled = self._produce_stage(stage, text, attempt, feedback,
+                                                requirements, budget, counters)
+                if assembled is None:
+                    self.ledger.append("budget_stop", "loop", budget.snapshot())
+                    return self._report(False, budget.why(f"{stage.name} 之前"),
+                                        redone=redone, rejects=rejects,
+                                        dispatches=counters["dispatches"], budget=budget)
+                candidate = self._assemble(stage, text, assembled)
+                problems = self._stage_problems(stage, candidate, ran)
 
                 if not problems:
+                    before[stage.name] = text
                     text = candidate
                     self.ledger.append("stage_ok", stage.name, {"attempt": attempt})
                     used = self._injected.pop(stage.name, None)
                     if used and self.lesson_path is not None:
                         lessonbook.bump(self.lesson_path, used, "ok")
                     if self.artifact_dir:
-                        self.artifact_dir.mkdir(parents=True, exist_ok=True)
-                        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stage.name)
-                        (self.artifact_dir / f"{index}-{safe}.md").write_text(
-                            candidate, encoding="utf-8")
+                        self._write_artifact(self.artifact_dir, f"{index}-{stage.name}.md", candidate)
                     if self.state_path:
                         self.state_path.write_text(json.dumps({
                             "stage_index": index + 1, "text": text,
@@ -181,11 +129,8 @@ class PDCA:
                                 "problems": problems, "feedback": feedback})
                 # 被拒的产出也落盘：只留一句原因，事后连「是哪一条判据误判」都查不出来
                 if self.artifact_dir:
-                    rejected = self.artifact_dir / "rejected"
-                    rejected.mkdir(parents=True, exist_ok=True)
-                    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stage.name)
-                    (rejected / f"{index}-{safe}-try{attempt}.md").write_text(
-                        candidate, encoding="utf-8")
+                    self._write_artifact(self.artifact_dir / "rejected",
+                                         f"{index}-{stage.name}-try{attempt}.md", candidate)
                 self.ledger.append("reject", "stage_gate",
                                    {"stage": stage.name, "attempt": attempt, "problems": problems})
                 if attempt == self.max_stage_attempts:
@@ -193,17 +138,37 @@ class PDCA:
                         self.cases.add(stage.name, raw, "按拒收原因逐条修后重做该阶段")
                     return self._report(
                         False, f"阶段「{stage.name}」连续 {attempt} 次未过阶段门",
-                        redone=redone, rejects=rejects, dispatches=dispatches, budget=budget)
+                        redone=redone, rejects=rejects,
+                        dispatches=counters["dispatches"], budget=budget)
                 # 只重做这一阶段：下游还没跑，上游不用重来
                 redone.append(stage.name)
                 self.ledger.append("redo_stage", stage.name, {"attempt": attempt})
 
         # ② 交付门：声明里的全部判据
-        delivery: list[str] = []
-        for name in decl.criteria:
-            verdict = self.judge.run(name, text)
-            ran.add(name)
-            delivery.extend(f"{name}: {p}" for p in verdict.problems)
+        delivery = self._delivery_problems(decl, text, ran)
+
+        # ②b 回退：交付门红了但前面各阶段都是绿的，说明问题出在最后一阶段没吃透
+        # 交付要求。回到那一阶段、带着交付门的拒收原因重做一次（只一次）。
+        # 为什么不整篇重来：那正是 1.0 的代价；为什么只做最后一阶段：前面的已经过门，
+        # 动它们等于把已经判过的东西再赌一次。
+        if delivery and self.plan.stages:
+            stage = self.plan.stages[-1]
+            if stage.name in before:
+                feedback = self._feedback("；".join(delivery), delivery)
+                assembled = self._produce_stage(stage, before[stage.name], 2, feedback,
+                                                self._requirements(stage), budget, counters)
+                if assembled is not None:
+                    candidate = self._assemble(stage, before[stage.name], assembled)
+                    retry = self._delivery_problems(decl, candidate, ran)
+                    self.ledger.append("redo_from_delivery", stage.name,
+                                       {"problems": delivery, "after": retry})
+                    redone.append(stage.name)
+                    if not retry:
+                        text, delivery = candidate, []
+                        if self.artifact_dir:
+                            self._write_artifact(self.artifact_dir,
+                                                 f"{len(self.plan.stages) - 1}-{stage.name}.md",
+                                                 candidate)
 
         # ③ 证据门 + ④ 不静默失败
         evidence = list(evidence or ())
@@ -214,9 +179,93 @@ class PDCA:
         self.ledger.append("delivery", "gate",
                            {"passed": passed, "problems": problems, "chars": len(text)})
         return self._report(passed, "" if passed else "交付门/证据门未过",
-                            redone=redone, rejects=rejects, dispatches=dispatches,
+                            redone=redone, rejects=rejects,
+                            dispatches=counters["dispatches"],
                             budget=budget, problems=problems, evidence=evidence,
                             chars=len(text), ran=sorted(ran), text=text)
+
+    def _produce_stage(self, stage, upstream: str, attempt: int, feedback: str,
+                       requirements: str, budget: Budget, counters: dict) -> str | None:
+        """跑一遍这个阶段的角色，装配并裁剪成候选。预算耗尽返回 None。
+
+        阶段循环与「交付门回退」共用这一段：回退必须走同一条派活路径，
+        否则回退出来的东西与正常产出的形状会不一样。
+        """
+        self._stage_in_flight = stage.name
+        writer = self._writer(stage)
+        roles = [self.plan.role(name) for name in stage.roles]
+        parts: list[str] = []
+        # 同一阶段的角色互不依赖（都只读上游、互不写对方），这是唯一不会破坏
+        # 交接顺序的并发粒度；预算仍串行入账，避免多线程计费打架。
+        if self.parallel and len(roles) > 1:
+            if budget.exhausted():
+                return None
+            materials = {role.name: self._run_hand(role, stage.name) for role in roles}
+            with ThreadPoolExecutor(max_workers=len(roles)) as pool:
+                futures = [(role, pool.submit(
+                    self.produce, role, stage.name,
+                    self._with_material(upstream, materials[role.name] + self._context()),
+                    attempt, feedback,
+                    requirements if role.name == writer else self._supplement(writer)))
+                           for role in roles]
+                for role, future in futures:
+                    out = future.result()
+                    budget.note(out)
+                    counters["dispatches"] += 1
+                    self.ledger.append("dispatch", role.name,
+                                       {"stage": stage.name, "attempt": attempt,
+                                        "chars": len(out), "parallel": True})
+                    parts.append(out)
+        else:
+            for role in roles:
+                if budget.exhausted():
+                    return None
+                material = self._run_hand(role, stage.name) + self._context()
+                out = self.produce(role, stage.name, self._with_material(upstream, material),
+                                   attempt, feedback,
+                                   requirements if role.name == writer else self._supplement(writer))
+                budget.note(out)
+                counters["dispatches"] += 1
+                self.ledger.append("dispatch", role.name,
+                                   {"stage": stage.name, "attempt": attempt, "chars": len(out)})
+                parts.append(out)
+        assembled = "\n\n".join(p for p in parts if p and p.strip())
+        # 结构由系统保证，不靠模型自觉：本阶段只准留自己那几节，越界部分裁掉。
+        # 实测模型即使被要求「只写这一片」，也会把整篇写出来——五轮同向失败。
+        allowed = self._allowed(stage)
+        if allowed:
+            assembled = self._trim(assembled, allowed)
+        return assembled
+
+    @staticmethod
+    def _assemble(stage, upstream: str, assembled: str) -> str:
+        """按阶段模式拼进上游：append 追加，replace 换掉。"""
+        if stage.mode == "append" and upstream.strip():
+            return upstream.rstrip() + "\n\n" + assembled
+        return assembled
+
+    def _stage_problems(self, stage, candidate: str, ran: set) -> list[str]:
+        problems: list[str] = []
+        for name in stage.gate_criteria:
+            verdict = self.judge.run(name, candidate)
+            ran.add(name)
+            problems.extend(verdict.problems)
+        return problems
+
+    def _delivery_problems(self, decl, text: str, ran: set) -> list[str]:
+        delivery: list[str] = []
+        for name in decl.criteria:
+            verdict = self.judge.run(name, text)
+            ran.add(name)
+            delivery.extend(f"{name}: {p}" for p in verdict.problems)
+        return delivery
+
+    @staticmethod
+    def _write_artifact(folder, name: str, text: str) -> None:
+        """落盘一份产出。文件名里的非法字符换成下划线，不静默丢文件。"""
+        folder.mkdir(parents=True, exist_ok=True)
+        safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in name)
+        (folder / safe).write_text(text, encoding="utf-8")
 
     def _run_hand(self, role, stage: str) -> str:
         """角色挂了工具就先跑一次手，取回的素材与证据编号进上游。
