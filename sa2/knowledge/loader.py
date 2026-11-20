@@ -27,6 +27,7 @@ _ALLOWED = {
     "vocab": {"schema", "dims", "kinds", "capabilities", "hand_capabilities", "events"},
     "formats": {"schema", "marker", "reference_ids"},
     "thresholds": {"schema", "values"},
+    "classify": {"schema", "failure_patterns"},
 }
 
 # 每份文件必填的键
@@ -35,6 +36,7 @@ _REQUIRED = {
     "vocab": {"schema", "dims", "kinds", "capabilities", "hand_capabilities", "events"},
     "formats": {"schema", "marker", "reference_ids"},
     "thresholds": {"schema", "values"},
+    "classify": {"schema", "failure_patterns"},
 }
 
 _CACHE: dict[str, dict] = {}
@@ -59,7 +61,7 @@ def _validate_sources(name: str, data: dict) -> None:
         missing = need - set(cfg)
         if missing:
             _fail(name, f"源 {key} 缺字段 {sorted(missing)}")
-        extra = set(cfg) - need - {"label", "fallback"}
+        extra = set(cfg) - need - {"label", "fallback", "fields"}
         if extra:
             _fail(name, f"源 {key} 有未登记字段 {sorted(extra)}")
         if not str(cfg["url"]).startswith("https://"):
@@ -71,6 +73,13 @@ def _validate_sources(name: str, data: dict) -> None:
                         f"field-prefixed / plain")
         if "{q}" not in str(cfg["url"]) or "{n}" not in str(cfg["url"]):
             _fail(name, f"源 {key} 的 url 必须含 {{q}} 与 {{n}} 两个占位符")
+        if cfg["parser"] == "json_api":
+            fields = cfg.get("fields")
+            if not isinstance(fields, dict) or not fields.get("title"):
+                _fail(name, f"源 {key} 用的是 json_api，必须给 fields 映射（至少含 title）")
+            unknown_field = set(fields) - {"items", "id", "title", "published", "url", "summary"}
+            if unknown_field:
+                _fail(name, f"源 {key} 的 fields 有未登记字段 {sorted(unknown_field)}")
 
 
 def _validate_vocab(name: str, data: dict) -> None:
@@ -123,11 +132,24 @@ def _validate_thresholds(name: str, data: dict) -> None:
                 _fail(name, f"阈值 {key} 缺 {need}：没有出处就不知道哪天该改它")
 
 
+def _validate_classify(name: str, data: dict) -> None:
+    rules = data.get("failure_patterns")
+    if not isinstance(rules, list) or not rules:
+        _fail(name, "failure_patterns 必须是非空数组")
+    kinds = load("vocab")["events"]["failure_kind"]
+    for rule in rules:
+        if not isinstance(rule, dict) or {"kind", "pattern"} - set(rule):
+            _fail(name, "failure_patterns 每项都要有 kind 与 pattern")
+        if rule["kind"] not in kinds:
+            _fail(name, f"failure_patterns 用了未登记的 failure_kind：{rule['kind']!r}")
+
+
 _VALIDATORS = {
     "sources": _validate_sources,
     "vocab": _validate_vocab,
     "formats": _validate_formats,
     "thresholds": _validate_thresholds,
+    "classify": _validate_classify,
 }
 
 

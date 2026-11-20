@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "failure_patterns": [
+    {
+      "kind": "zero_hit",
+      "pattern": "零命中|没有 entry|没命中|零结果"
+    },
+    {
+      "kind": "empty_output",
+      "pattern": "0 字符|输出为空|空产出"
+    },
+    {
+      "kind": "missing_heading",
+      "pattern": "缺章节|缺少必需标题|标题缺失"
+    },
+    {
+      "kind": "subsection_rejected",
+      "pattern": "标题下没有内容|子标题"
+    },
+    {
+      "kind": "too_short",
+      "pattern": "过短|少于|正文下限"
+    },
+    {
+      "kind": "unsigned_reference",
+      "pattern": "不在证据台账|引用 .*条|文献 .*不在"
+    },
+    {
+      "kind": "budget_stop",
+      "pattern": "预算"
+    },
+    {
+      "kind": "org_rejected",
+      "pattern": "编制|角色|阶段只有"
+    },
+    {
+      "kind": "criteria_rejected",
+      "pattern": "."
+    }
+  ]
+}

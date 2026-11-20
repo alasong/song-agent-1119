@@ -21,6 +21,7 @@ from ..core.gate import Declaration
 from ..core.judge import Judge
 from ..core.ledger import Ledger
 from ..forge.org import OrgPlan
+from ..memory import lessons as lessonbook
 from ..memory.cases import CaseBook
 
 
@@ -30,7 +31,7 @@ class PDCA:
                  max_stage_attempts: int = 2, cases: CaseBook | None = None,
                  state_path: str | Path | None = None, resume: bool = False,
                  artifact_dir: str | Path | None = None, parallel: bool = False,
-                 hand=None, context=None):
+                 hand=None, context=None, lesson_path: str | Path | None = None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
@@ -47,6 +48,10 @@ class PDCA:
         self.usage = usage
         self.max_stage_attempts = max_stage_attempts
         self.cases = cases
+        # 经验库：按「这次失败属于哪一类」取对策。取到的不只是提示，还要记命中，
+        # 否则「哪条经验有用」永远只能靠感觉——经验库又会变成写不读的死功能。
+        self.lesson_path = Path(lesson_path) if lesson_path else None
+        self._injected: dict[str, list[str]] = {}
         self.state_path = Path(state_path) if state_path else None
         self.resume = resume
         self.artifact_dir = Path(artifact_dir) if artifact_dir else None
@@ -88,6 +93,7 @@ class PDCA:
         for index, stage in enumerate(self.plan.stages[start:], start=start):
             # 判据对生成方必须是可见的：看不见要求，只能猜，猜不中就红两次。
             # 可见 ≠ 可控：生成方知道要求是什么，但改不了判据本身。
+            self._stage_in_flight = stage.name
             requirements = self._requirements(stage)
             writer = self._writer(stage)
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
@@ -154,6 +160,9 @@ class PDCA:
                 if not problems:
                     text = candidate
                     self.ledger.append("stage_ok", stage.name, {"attempt": attempt})
+                    used = self._injected.pop(stage.name, None)
+                    if used and self.lesson_path is not None:
+                        lessonbook.bump(self.lesson_path, used, "ok")
                     if self.artifact_dir:
                         self.artifact_dir.mkdir(parents=True, exist_ok=True)
                         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stage.name)
@@ -167,7 +176,7 @@ class PDCA:
                     break
 
                 raw = "；".join(problems)
-                feedback = self._feedback(raw)
+                feedback = self._feedback(raw, problems)
                 rejects.append({"stage": stage.name, "attempt": attempt,
                                 "problems": problems, "feedback": feedback})
                 # 被拒的产出也落盘：只留一句原因，事后连「是哪一条判据误判」都查不出来
@@ -285,11 +294,29 @@ class PDCA:
                 lines.append("必须出现：" + "、".join(str(x) for x in (crit.spec.get("patterns") or [])))
         return "\n".join(lines)
 
-    def _feedback(self, raw: str) -> str:
-        """把历史案例并进重做提示：没有这一句，案例库就只是写不读的死功能。"""
-        if self.cases is None:
-            return raw
-        hints = [f"{c.stage}·{c.fix}" for c in self.cases.similar(raw, k=2) if c.fix]
+    def _feedback(self, raw: str, problems=()) -> str:
+        """把「同一类失败的对策」并进重做提示。
+
+        经验先按 failure_kind 取（条件匹配），案例按文本相似兜底：前者能说清「什么时候
+        这条算数」，后者只能说「上次也这么说过」。
+        """
+        hints: list[str] = []
+        if self.lesson_path is not None:
+            kind = lessonbook.classify(problems or [raw])
+            picked = lessonbook.match(lessonbook.all(self.lesson_path),
+                                      {"failure_kind": kind}, k=2)
+            for lesson in picked:
+                text = str(lesson.get("fix") or lesson.get("text") or "").strip()
+                if text:
+                    hints.append(f"[{kind}] {text}")
+            if picked:
+                ids = [str(x.get("id")) for x in picked]
+                lessonbook.bump(self.lesson_path, ids, "injected")
+                stage = getattr(self, "_stage_in_flight", "")
+                self._injected.setdefault(stage, []).extend(ids)
+                self.ledger.append("lesson", kind, {"ids": ids, "stage": stage})
+        if self.cases is not None:
+            hints += [f"{c.stage}·{c.fix}" for c in self.cases.similar(raw, k=2) if c.fix]
         return raw + ("；历史案例：" + " / ".join(hints) if hints else "")
 
     def _report(self, passed: bool, reason: str, *, problems=(), redone=(), rejects=(),

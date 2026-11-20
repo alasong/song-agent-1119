@@ -81,7 +81,7 @@ def fetch(source: str, query: str, max_results: int = 5, *, transport=None,
                 continue
             break
         try:
-            entries = parsers.parse(str(cfg["parser"]), text)[:n]
+            entries = parsers.parse(str(cfg["parser"]), text, cfg)[:n]
         except parsers.ParseError as exc:     # 解析失败是定论，重试不会让接口变对
             raise FetchError(str(exc)) from exc
         # 每条取回的条目都带上来源：证据台账、素材块、事后核查都靠这个字段认路

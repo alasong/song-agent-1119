@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 import time
 from pathlib import Path
 
@@ -114,3 +116,42 @@ def match(lessons: list[dict], when: dict, k: int = 3) -> list[dict]:
         scored.append((1 if exact else 0, len(overlap), _rate(lesson), lesson))
     scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
     return [lesson for *_, lesson in scored[:max(1, int(k))]]
+
+def classify(problems) -> str:
+    """把一次拒收的问题文本归到 failure_kind。规则在 `classify.json`，不在代码里。
+
+    没有这一步，「按条件取经验」就没有条件可取——拒收原因只有一段自然语言。
+    """
+    text = "；".join(str(p) for p in (problems or ()))
+    for rule in load("classify")["failure_patterns"]:
+        try:
+            if re.search(str(rule["pattern"]), text):
+                return str(rule["kind"])
+        except re.error as exc:
+            raise LessonError(f"归类规则 {rule['kind']} 的正则编不过：{exc}") from exc
+    return "criteria_rejected"
+
+
+def bump(path: str | Path, ids, field: str = "injected") -> int:
+    """给这几条经验记一笔（injected / ok / bad）。返回改到的条数。
+
+    回写整份 jsonl：经验库本来就小，一次重写的代价远低于引入索引文件。
+    """
+    wanted = set(ids or ())
+    if not wanted or field not in ("injected", "ok", "bad"):
+        return 0
+    target = Path(path)
+    rows = all(target)
+    hit = 0
+    for row in rows:
+        if row.get("id") in wanted:
+            stats = row.setdefault("stats", {"injected": 0, "ok": 0, "bad": 0})
+            stats[field] = int(stats.get(field) or 0) + 1
+            hit += 1
+    if hit:
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        os.replace(tmp, target)
+    return hit

@@ -34,6 +34,15 @@ def criteria_history_path() -> Path:
 def cases_path() -> Path:
     return ensure() / "cases.jsonl"
 
+def lessons_path() -> Path:
+    return ensure() / "lessons.jsonl"
+
+
+def candidates_path() -> Path:
+    """经验提升出的「机制候选」：只写不生效，等 registry 登记。"""
+    return ensure() / "candidates.jsonl"
+
+
 def goals_path() -> Path:
     return ensure() / "goals.json"
 

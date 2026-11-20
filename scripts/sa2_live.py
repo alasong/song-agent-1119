@@ -27,6 +27,7 @@ from sa2.core import gate                         # noqa: E402
 from sa2.core.gate import Declaration             # noqa: E402
 from sa2.core.evidence import EvidenceBook, citation_problems     # noqa: E402
 from sa2.core.judge import Criterion, Judge, replace  # noqa: E402
+from sa2 import config                             # noqa: E402
 from sa2 import fetch                              # noqa: E402
 from sa2.core.ledger import Ledger                # noqa: E402
 from sa2.forge import criteria as fc              # noqa: E402
@@ -416,6 +417,11 @@ def main() -> int:
             name="交付·引用", kind="callable", dims=(), self_tested=True, scope="delivery",
             spec={"target": "sa2.core.evidence:check_citations",
                   "book": str(evidence_book.path), "min": args.evidence_min}))
+        # 体量：不许拿提纲当报告。阈值在 thresholds.json，改数不改码
+        delivery_specs.append(Criterion(
+            name="交付·体量", kind="callable", dims=(), self_tested=True, scope="delivery",
+            spec={"target": "sa2.core.gate:check_min_chars",
+                  "min": int(config.get("delivery_min_chars"))}))
         # 列了编号就等于声称出处：arXiv id / DOI 必须能在台账里找到，不许凭记忆写
         delivery_specs.append(Criterion(
             name="交付·出处", kind="callable", dims=(), self_tested=True, scope="delivery",
@@ -487,7 +493,8 @@ def main() -> int:
                 state_path=state_path, resume=bool(args.resume),
                 artifact_dir=run_dir / "stages",
                 hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"),
-                context=lambda: evidence_block(evidence_book))
+                context=lambda: evidence_block(evidence_book),
+                lesson_path=registry.lessons_path())
     report = pdca.run(decl, evidence=[])
 
     tool_uses = record_tool_uses(judge, tool_store)

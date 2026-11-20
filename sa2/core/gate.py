@@ -104,3 +104,16 @@ def pre_flight(decl: Declaration, judge: Judge, vocab) -> dict:
     """开工前的合门：任何一条不成立，就不许发第一次调用。"""
     problems = check_declaration(decl, vocab) + check_criteria(judge, decl)
     return {"ok": not problems, "problems": problems}
+
+
+def check_min_chars(text: str, spec: dict | None = None) -> list[str]:
+    """交付体量判据：不许拿提纲当报告。
+
+    阈值来自 `thresholds.json` 的 `delivery_min_chars`，spec 里带 min；不写死在代码里，
+    因为「多少字才算够」是随经验调整的数，不是机制。
+    """
+    need = int((spec or {}).get("min") or 0)
+    body = "".join(ch for ch in (text or "") if not ch.isspace())
+    if need <= 0 or len(body) >= need:
+        return []
+    return [f"交付正文只有 {len(body)} 字 < 要求 {need} 字——门只查了「有没有」，没查「够不够」"]

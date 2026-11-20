@@ -6,7 +6,10 @@
       "host": "export.arxiv.org",
       "url": "https://export.arxiv.org/api/query?search_query={q}&start=0&max_results={n}&sortBy=submittedDate&sortOrder=descending",
       "query_style": "field-prefixed",
-      "fallback": ["drop_word", "drop_to_two"],
+      "fallback": [
+        "drop_word",
+        "drop_to_two"
+      ],
       "parser": "arxiv_atom",
       "capability": "fetch"
     },
@@ -15,9 +18,32 @@
       "host": "hn.algolia.com",
       "url": "https://hn.algolia.com/api/v1/search?query={q}&tags=story&hitsPerPage={n}",
       "query_style": "plain",
-      "fallback": ["drop_word", "drop_to_two"],
+      "fallback": [
+        "drop_word",
+        "drop_to_two"
+      ],
       "parser": "hn_json",
       "capability": "fetch"
+    },
+    "crossref": {
+      "label": "Crossref",
+      "host": "api.crossref.org",
+      "url": "https://api.crossref.org/works?query={q}&rows={n}&select=DOI,title,created,URL,abstract&mailto=sa2@example.org",
+      "query_style": "plain",
+      "fallback": [
+        "drop_word",
+        "drop_to_two"
+      ],
+      "parser": "json_api",
+      "capability": "search",
+      "fields": {
+        "items": "message.items",
+        "id": "DOI",
+        "title": "title.0",
+        "published": "created.date-parts.0.0",
+        "url": "URL",
+        "summary": "abstract"
+      }
     }
   }
 }
