@@ -169,3 +169,44 @@ def check_citations(text: str, spec: dict | None = None) -> list[str]:
         problems.insert(0, f"引用 {len(found)} 条 < 要求 {minimum} 条——"
                            f"没有证据支撑的交付不算交付")
     return problems
+
+
+REF = re.compile(
+    r"(?:arxiv[:\s]*|arxiv\.org/abs/)(\d{4}\.\d{4,5})(?:v\d+)?"
+    r"|(?:doi[:\s]*|doi\.org/)(10\.\d{4,9}/[^\s)\]|>,;]+)",
+    re.I,
+)
+
+
+def reference_ids(text: str) -> list[str]:
+    """正文里出现的文献编号（arXiv id / DOI），按首次出现顺序去重并归一。"""
+    seen: list[str] = []
+    for arxiv_id, doi in REF.findall(text or ""):
+        # 中文句读会粘在 DOI 尾巴上（正文是中文写的），归一前先削掉
+        found = (arxiv_id or doi).strip().rstrip(".,;:。，；：、)）】\"'").lower()
+        if found and found not in seen:
+            seen.append(found)
+    return seen
+
+
+def check_references(text: str, spec: dict | None = None) -> list[str]:
+    """交付判据：正文列出的每一条文献编号，都得能在证据台账里找到。
+
+    为什么要有这条：真跑里交付文档有一张 39 行的文献表、22 个编号，台账里只有
+    一个——其余全凭记忆写，而「引用条数 + 每条在台账」那道门看不到它们，
+    因为表里没有 `[Sx]` 标记。列编号就等于声称出处，声称就得对得上账。
+    """
+    spec = spec or {}
+    book_path = str(spec.get("book") or "").strip()
+    if not book_path:
+        return ["出处判据缺 book：不知道该去哪个台账查文献"]
+    book = EvidenceBook(book_path)
+    haystack = []
+    for ev in book.all():
+        haystack.append(ev.uri or "")
+        path = Path(ev.content_path)
+        if path.is_file():
+            haystack.append(path.read_text(encoding="utf-8", errors="replace"))
+    hay = "\n".join(haystack).lower()
+    return [f"文献 {found} 不在证据台账里——它是凭记忆写的，不是取回来的"
+            for found in reference_ids(text) if found not in hay]

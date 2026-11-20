@@ -338,6 +338,11 @@ def main() -> int:
             name="交付·引用", kind="callable", dims=(), self_tested=True, scope="delivery",
             spec={"target": "sa2.core.evidence:check_citations",
                   "book": str(evidence_book.path), "min": args.evidence_min}))
+        # 列了编号就等于声称出处：arXiv id / DOI 必须能在台账里找到，不许凭记忆写
+        delivery_specs.append(Criterion(
+            name="交付·出处", kind="callable", dims=(), self_tested=True, scope="delivery",
+            spec={"target": "sa2.core.evidence:check_references",
+                  "book": str(evidence_book.path)}))
     _register(judge, delivery_specs)
     if not args.fresh and not args.auto_stages and delivery_specs:
         registry.remember_goal(goal, [c.name for c in delivery_specs])

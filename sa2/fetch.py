@@ -16,7 +16,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from .core.evidence import Evidence, EvidenceBook, stamp
+from .core.evidence import Evidence, EvidenceBook, digest_of, stamp
 
 ALLOWED_HOSTS = ("export.arxiv.org",)
 BASE = "https://export.arxiv.org/api/query"
@@ -94,11 +94,23 @@ def arxiv(query: str, max_results: int = 5, *, transport=None,
 
 def record(entries: list[dict], book: EvidenceBook, root, verifier: str,
            start: int = 1) -> list[Evidence]:
-    """把取回条目写成证据：内容 = 标题/日期/链接/摘要，落盘并打戳。"""
+    """把取回条目写成证据：内容 = 标题/日期/链接/摘要，落盘并打戳。
+
+    同一份内容只入账一次。账本按内容寻址，五个角色各取一次同一篇论文，
+    不该变成 S1–S5 五条「证据」——实测真跑里 5 条证据全是同一篇（同 digest），
+    于是「至少 3 条引用」那道门只靠一篇论文就过了。已有内容直接复用原 id，
+    写手引 S2 与引 S1 就是同一份材料。
+    """
     stamped: list[Evidence] = []
+    known = {ev.digest: ev for ev in book.all()}
     for offset, item in enumerate(entries):
         content = (f"{item['title']}\n{item['published']}\n{item['url']}\n"
                    f"{item['summary']}")
+        digest = digest_of(content)
+        if digest in known:
+            stamped.append(known[digest])
+            continue
         ev = stamp(item["url"], content, verifier, f"S{start + offset}", root)
-        stamped.append(book.add(ev))
+        known[digest] = book.add(ev)
+        stamped.append(known[digest])
     return stamped
