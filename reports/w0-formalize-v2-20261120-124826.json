@@ -1,0 +1,192 @@
+{
+  "step": "W0-formalize-v2",
+  "at": "2026-11-20T12:48:26",
+  "samples": 10,
+  "l1_passed": 9,
+  "l2_passed": 1,
+  "l1_rate": 0.9,
+  "l2_rate": 0.1,
+  "note": "L2=判据能拒掉格式齐全但结论错的稿子；仍不等于语义判对",
+  "rows": [
+    {
+      "id": "A",
+      "task": "判断我们该不该做 agent 创业方向；如果做，选哪个方向、不选什么，给出依据与止损。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，包含以下四个二级标题（## 决策、## 方向选择、## 不选方向、## 依据与止损），且每个标题下至少有一行非空内容；在 ## 方向选择 下明确写出一个选定的 agent 创业方向；在 ## 不选方向 下明确写出至少一个不选的方向；在 ## 依据与止损 下同时包含依据和止损条件。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    required = ['## 决策', '## 方向选择', '## 不选方向', '## 依据与止损']\n    positions = []\n    for h in required:\n        idx = text.find(h)\n        if idx == -1:\n            sys.exit(1)\n        positions.append(idx)\n    if positions != sorted(positions):\n        sys.exit(1)\n    sections = {}\n    for i, h in enumerate(required):\n        start = positions[i] + len(h)\n        end = positions[i+1] if i+1 < len(required) else len(text)\n        content = text[start:end].strip()\n        if not content:\n            sys.exit(1)\n        sections[h] = content\n    if not re.search(r'[^\\s]', sections['## 方向选择']):\n        sys.exit(1)\n    if not re.search(r'[^\\s]', sections['## 不选方向']):\n        sys.exit(1)\n    basis = sections['## 依据与止损']\n    if '依据' not in basis or '止损' not in basis:\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "## 决策\n\n建议立即启动 agent 创业，以 6 个月为周期推进，首期投入控制在 80 万元以内，团队规模不超过 6 人。当前大模型推理成本已连续 8 个季度下降，agent 编排层尚未形成垄断，窗口期约 12 至 18 个月，属于高确定性切入时机。\n\n## 方向选择\n\n选定方向：面向中小跨境电商的**售后工单自动处理 agent**。该场景流程标准化程度高、人工成本占比大、客户付费意愿明确，且可直接对接现有客服系统，无需改造客户业务流程。首批目标客户为年 GMV 在 500 万至 5000 万元区间的卖家，按工单量订阅收费。\n\n## 不选方向\n\n不选通用个人助理 agent。该方向用户预期模糊、留存率低、获客成本高，且已被头部厂商以免费形态覆盖，创业公司难以建立付费壁垒。同时不选面向开发者的 agent 框架，生态已被主流开源项目占据。\n\n## 依据与止损\n\n依据：售后工单场景单均人",
+      "tokens": 1275
+    },
+    {
+      "id": "B",
+      "task": "给山西刚过特控线的考生一份专业与志愿建议，要能落地。",
+      "l1": true,
+      "l2": true,
+      "why": "",
+      "predicate": "给定文件是一个针对山西刚过特控线考生的志愿建议方案，包含至少3个具体院校专业组合（院校名称+专业名称），且每个组合均标注了往年录取最低分或位次，并给出冲/稳/保梯度分类。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) < 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    # 查找院校+专业组合：简单模式：包含“大学”或“学院”后跟专业名称，且附近有分数或位次\n    # 更稳健：统计包含“大学”或“学院”的行，且该行或相邻行有数字（分数/位次）\n    lines = text.split('\\n')\n    combos = 0\n    for i, line in enumerate(lines):\n        if ('大学' in line or '学院' in line) and re.search(r'\\d{3}', line):\n            # 检查是否包含专业关键词（常见专业词）\n            if re.search(r'专业|工程|科学|技术|管理|医学|经济|法学|文学|理学|工学|农学', line):\n                combos += 1\n    # 检查梯度分类关键词\n    has_chong = '冲' in text\n    has_wen = '稳' in text\n    has_bao = '保' in text\n    if combos >= 3 and has_chong and has_wen and has_bao:\n        sys.exit(0)\n    else:\n        sys.exit(1)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "山西刚过特控线考生志愿建议方案\n\n一、总体策略\n山西特控线附近考生位次约在全区前20%—25%，建议以“保公办、冲行业特色、稳省内骨干”为原则，重点布局省内院校与中西部同层次高校，避开热门城市扎堆。\n\n二、具体院校专业组合\n\n1. 冲：太原理工大学 材料成型及控制工程\n2024年山西理科最低录取分约548分，位次约17000名。特控线上10—15分可尝试，专业属传统工科，录取波动较大，适合作为冲刺志愿。\n\n2. 稳：山西大学 化学工程与工艺\n2024年山西理科最低录取分约532分，位次约24000名。特控线附近考生匹配度较高，省内招生计划多，录取稳定性较好。\n\n3. 保：中北大学 安全工程\n2024年山西理科最低录取分约515分，位次约31000名。低于特控线附近考生常规预期，作为保底志愿可有效防止滑档。\n\n三、填报提醒\n三个组合按冲、稳、保梯度排列，建议服从专业调剂，优先保证录取批次。",
+      "tokens": 1095
+    },
+    {
+      "id": "C",
+      "task": "判断要不要把 sa 重做成双环：内环确定性收敛、外环探索。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 JSON 对象，包含布尔字段 'rebuild_as_double_loop'；当且仅当该字段为 true 时，表示决定把 sa 重做成双环（内环确定性收敛、外环探索），否则表示不重做。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    if 'rebuild_as_double_loop' not in data:\n        sys.exit(1)\n    val = data['rebuild_as_double_loop']\n    if not isinstance(val, bool):\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"rebuild_as_double_loop\": true,\n  \"decision_summary\": \"决定将 sa 重做为双环结构：内环负责确定性收敛，外环负责探索。\",\n  \"rationale\": {\n    \"convergence_need\": \"当前 sa 在收敛阶段存在随机扰动残留，内环改为确定性收敛可消除该抖动，保证收敛可复现。\",\n    \"exploration_need\": \"外环保留探索机制，可在收敛后继续跳出局部最优，兼顾稳定性与全局搜索能力。\",\n    \"separation_benefit\": \"内外环职责分离后，参数调节更清晰：内环控制收敛精度与步长，外环控制探索强度与重启策略。\",\n    \"risk_assessment\": \"改造范围可控，现有收敛逻辑可复用为内环主体，外环仅需封装探索调度，不引入额外不确定性。\"\n  },\n  \"imp",
+      "tokens": 863
+    },
+    {
+      "id": "D",
+      "task": "把本周做的事写成一页给领导的周报：做了什么、卡在哪、下周做什么。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "给定文件是一个不超过一页（≤500字）的周报，且明确包含三个部分：本周完成的工作、遇到的阻塞/问题、下周计划；每个部分至少有一句话描述。",
+      "checker": "import sys, re\npath = sys.argv[1]\ntry:\n    text = open(path, encoding='utf-8').read()\nexcept Exception:\n    sys.exit(1)\nif len(text) > 500:\n    sys.exit(1)\npatterns = [\n    r'(本周|这周|完成|做了|进展|工作内容)',\n    r'(卡|阻塞|问题|困难|风险|阻碍|pending|block)',\n    r'(下周|接下来|计划|安排|下一步)'\n]\nfor p in patterns:\n    if not re.search(p, text, re.I):\n        sys.exit(1)\n# 每个部分至少有一句话（粗略：包含标点或换行分隔的非空行）\nlines = [l.strip() for l in text.splitlines() if l.strip()]\nif len(lines) < 3:\n    sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "**本周工作周报**\n\n**一、本周完成的工作**\n本周重点推进了客户数据中台二期接口联调，已完成全部12个接口的对接测试并上线；同步整理了上季度运营分析报告，于周三提交给市场部；另外组织了一次跨部门需求评审会，确认了下月版本的功能范围。\n\n**二、遇到的阻塞与问题**\n数据中台联调过程中发现第三方供应商的鉴权服务响应超时，平均延迟约3秒，已影响前端页面加载体验，目前对方技术团队正在排查，预计下周一给出修复方案。此外，运营分析报告所需的部分历史数据缺失，已向数据仓库团队提出补数申请，尚未收到回复。\n\n**三、下周工作计划**\n下周将跟进第三方鉴权服务的修复进度并完成回归测试；推动数据仓库补数到位后更新分析报告；同时启动下月版本的需求拆解与排期，计划周三前输出详细任务清单。\n\n本周整体进度符合预期，无重大风险。",
+      "tokens": 815
+    },
+    {
+      "id": "E",
+      "task": "判断三条 AI 科研自动化路线（自动做实验 / 自动写作与审稿 / 自动选题）哪条值得押，给依据。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，其中包含三个二级标题（## 自动做实验、## 自动写作与审稿、## 自动选题），每个标题下至少有一个段落（非空行）给出该路线的评估依据，并且文件末尾有一个二级标题（## 结论）下的段落明确写出三条路线中哪一条值得押（包含‘押’字或‘推荐’字样的明确选择）。",
+      "checker": "import sys, re\npath = sys.argv[1]\ntry:\n    text = open(path, encoding='utf-8').read()\nexcept Exception:\n    sys.exit(1)\nrequired = ['## 自动做实验', '## 自动写作与审稿', '## 自动选题', '## 结论']\nfor h in required:\n    if h not in text:\n        sys.exit(1)\n# 检查每个路线标题下至少有一个非空段落（非标题行）\nfor h in required[:3]:\n    start = text.index(h) + len(h)\n    rest = text[start:]\n    next_h = re.search(r'\\n## ', rest)\n    section = rest[:next_h.start()] if next_h else rest\n    lines = [l.strip() for l in section.splitlines() if l.strip() and not l.strip().startswith('#')]\n    if not lines:\n        sys.exit(1)\n# 检查结论部分有明确选择\nconcl_start = text.index('## 结论') + len('## 结论')\nconcl = text[concl_start:]\nif not re.search(r'(押|推荐)', concl):\n    sys.exit(1)\n# 结论中必须提到三条路线之一（自动做实验/自动写作与审稿/自动选题）\nif not any(r in concl for r in ['自动做实验', '自动写作与审稿', '自动选题']):\n    sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "## 自动做实验\n\n自动做实验路线已具备成熟的闭环能力：从假设生成、实验设计到执行与结果分析，均可由智能体独立完成。当前主流系统在材料发现与生物实验场景中已实现每周数百次无人干预实验，成功率稳定在 85% 以上，且成本仅为人工实验的十分之一。该路线技术栈标准化程度高，工程落地风险最低。\n\n## 自动写作与审稿\n\n自动写作与审稿路线依赖对学术语义的深层理解，但现有模型在长文本逻辑一致性上仍有明显短板，审稿意见常流于表面且缺乏可复现性判断。更关键的是，该路线面临学术共同体的信任壁垒，期刊与会议对 AI 审稿的接受度极低，商业化路径不清晰，投入产出比难以保障。\n\n## 自动选题\n\n自动选题路线看似价值最高，实则最不可控。选题质量高度依赖对领域前沿的隐性判断与学术品味，而这类知识难以从公开文献中完整习得。现有系统产出的选题多属已有工作的排列组合，新颖性不足，且无法评估可行性，容易误导研究方向。该路",
+      "tokens": 1233
+    },
+    {
+      "id": "F",
+      "task": "给 sa 的外环实验定一条预算上限，并说明什么情况下判停。",
+      "l1": false,
+      "l2": false,
+      "why": "L1 未过",
+      "predicate": "交付物是一个 JSON 对象，包含键 'budget_cap'（数值，单位：元，且 > 0）和 'stop_conditions'（非空字符串列表，每条描述一个可判定的判停条件），且至少有一条判停条件涉及预算耗尽或超支。",
+      "checker": "import json, sys\n\ndef main():\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    cap = data.get('budget_cap')\n    if not isinstance(cap, (int, float)) or isinstance(cap, bool) or cap <= 0:\n        sys.exit(1)\n    conds = data.get('stop_conditions')\n    if not isinstance(conds, list) or len(conds) == 0:\n        sys.exit(1)\n    if not all(isinstance(c, str) and c.strip() for c in conds):\n        sys.exit(1)\n    keywords = ['预算', '超支', '耗尽', 'budget', 'cost', 'spend', 'exceed']\n    if not any(any(k in c.lower() for k in keywords) for c in conds):\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 1,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "{\n  \"budget_cap\": 50000,\n  \"stop_conditions\": [\n    \"当累计实验支出达到 50000 元时立即停止所有外环实验。\",\n    \"当单日实验支出超过 8000 元时暂停当日实验并复核。\",\n    \"当外环实验连续 3 天转化率低于 0.5% 时终止实验。\",\n    \"当实验组与对照组核心指标差异的 p 值大于 0.1 且已运行 14 天时判停。\"\n  ]\n}",
+      "tokens": 847
+    },
+    {
+      "id": "G",
+      "task": "评估把 sa2_live 切到 --pool 2 是否值得：成本与收益各是什么。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个文本文件，其中明确列出将 sa2_live 切换到 --pool 2 的成本项和收益项，且成本项和收益项各至少包含一个具体条目。",
+      "checker": "import sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    lower = text.lower()\n    cost_keywords = ['成本', 'cost', '代价', '开销', '支出', '投入']\n    benefit_keywords = ['收益', 'benefit', '好处', '回报', '利润', '产出']\n    has_cost = any(k in lower for k in cost_keywords)\n    has_benefit = any(k in lower for k in benefit_keywords)\n    if not (has_cost and has_benefit):\n        sys.exit(1)\n    lines = [line.strip() for line in text.splitlines() if line.strip()]\n    cost_items = 0\n    benefit_items = 0\n    current_section = None\n    for line in lines:\n        ll = line.lower()\n        if any(k in ll for k in cost_keywords):\n            current_section = 'cost'\n            continue\n        if any(k in ll for k in benefit_keywords):\n            current_section = 'benefit'\n            continue\n        if current_section == 'cost' and (line.startswith('-') or line.startswith('*') or line[0].isdigit()):\n            cost_items += 1\n        elif current_section == 'benefit' and (line.startswith('-') or line.startswith('*') or line[0].isdigit()):\n            benefit_items += 1\n    if cost_items >= 1 and benefit_items >= 1:\n        sys.exit(0)\n    else:\n        sys.exit(1)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "将 sa2_live 切换到 --pool 2 的评估结论：值得执行，建议本周内完成切换。\n\n成本项：\n1. 内存占用上升。--pool 2 会常驻两个工作池，实测单实例 RSS 由约 1.8 GB 增至约 2.6 GB，需确认节点剩余内存不低于 3 GB，否则有 OOM 风险。\n2. 切换窗口内的短暂抖动。滚动重启约需 40 秒，期间在途请求可能重试一次，预计影响 0.3% 的调用。\n\n收益项：\n1. 吞吐提升明显。压测显示 QPS 由 1200 提升至 1850，提升约 54%，高峰排队时长由 220 ms 降至 90 ms。\n2. 尾延迟改善。P99 由 480 ms 降至 260 ms，超时告警预计下降七成。\n3. 资源利用率更均衡。双池分担后单池 CPU 峰值由 85% 降至 62%，留出突发余量。\n\n风险与回滚：切换后观察 30 分钟核心指标，若错误率超过 0.5% 或 P99",
+      "tokens": 1128
+    },
+    {
+      "id": "H",
+      "task": "决定要不要每天自动跑一次 sa，并给出止损条件。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个JSON对象，包含键 'decision'（值为 'run_daily' 或 'do_not_run_daily'）、'stop_loss_conditions'（非空字符串列表）和 'rationale'（非空字符串）。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    if data.get('decision') not in ('run_daily', 'do_not_run_daily'):\n        sys.exit(1)\n    sl = data.get('stop_loss_conditions')\n    if not isinstance(sl, list) or len(sl) == 0 or not all(isinstance(x, str) and x.strip() for x in sl):\n        sys.exit(1)\n    r = data.get('rationale')\n    if not isinstance(r, str) or not r.strip():\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"decision\": \"run_daily\",\n  \"stop_loss_conditions\": [\n    \"连续3个交易日sa策略净值回撤超过8%\",\n    \"单日滑点成本超过策略日均收益的2倍\",\n    \"标的流动性指标（日均成交额）低于5000万元\",\n    \"策略信号胜率连续10个交易日低于45%\"\n  ],\n  \"rationale\": \"sa策略在近12个月回测中夏普比率为1.8，最大回撤仅6.2%，日均收益稳定覆盖交易成本。每日自动运行可及时捕捉隔夜信号，避免人工延迟。上述止损条件覆盖回撤、成本、流动性和胜率四个维度，触发后暂停自动运行并转人工复核，风险可控。\"\n}",
+      "tokens": 812
+    },
+    {
+      "id": "I",
+      "task": "把一次真跑的成本写成一页账：token、失败次数、返工次数。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，包含一个表格，表格有三列分别名为 'token'、'失败次数'、'返工次数'，且每列至少有一个数值（整数或浮点数）数据行。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    lines = text.splitlines()\n    # 找表头行：包含 token、失败次数、返工次数 三个词（不区分大小写，允许空格）\n    header_idx = None\n    for i, line in enumerate(lines):\n        low = line.lower()\n        if 'token' in low and '失败次数' in line and '返工次数' in line:\n            header_idx = i\n            break\n    if header_idx is None:\n        sys.exit(1)\n    # 解析表头列名\n    header = lines[header_idx]\n    # 简单按 | 分割，去除首尾空白和空段\n    cols = [c.strip() for c in header.split('|')]\n    cols = [c for c in cols if c != '']\n    if len(cols) < 3:\n        sys.exit(1)\n    # 找三列索引\n    idx_token = idx_fail = idx_rework = None\n    for j, c in enumerate(cols):\n        cl = c.lower()\n        if 'token' in cl:\n            idx_token = j\n        elif '失败次数' in c:\n            idx_fail = j\n        elif '返工次数' in c:\n            idx_rework = j\n    if None in (idx_token, idx_fail, idx_rework):\n        sys.exit(1)\n    # 检查后续行（直到表格结束：空行或非 | 开头）\n    data_rows = 0\n    for line in lines[header_idx+1:]:\n        stripped = line.strip()\n        if not stripped:\n            break\n        if not stripped.startswith('|'):\n            break\n        # 跳过对齐行（如 |---|---|）\n        if re.match(r'^\\|?[\\s:-]+\\|', stripped):\n            continue\n        cells = [c.strip() for c in stripped.split('|')]\n        cells = [c for c in cells if c != '']\n        if len(cells) <= max(idx_token, idx_fail, idx_rework):\n            continue\n        def is_number(s):\n            try:\n                float(s)\n                return True\n            except ValueError:\n                return False\n        if is_number(cells[idx_token]) and is_number(cells[idx_fail]) and is_number(cells[idx_rework]):\n            data_rows += 1\n    if data_rows >= 1:\n        sys.exit(0)\n    else:\n        sys.exit(1)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "# 本次运行成本账\n\n| token | 失败次数 | 返工次数 |\n|-------|----------|----------|\n| 12800 | 2        | 1        |\n| 9600  | 1        | 0        |\n| 15400 | 3        | 2        |\n| 8200  | 0        | 1        |\n\n合计 token：46000；失败次数：6；返工次数：4。\n\n说明：以上数据来自本次实际运行记录，按阶段分四段统计，每段对应一次完整执行周期。token 为输入与输出之和，失败次数按报错中断计，返工次数按重跑计。",
+      "tokens": 1257
+    },
+    {
+      "id": "J",
+      "task": "判断 sa 离「单 agent 死了任务仍完成」还差什么，并给一条验收命令。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 JSON 对象，包含键 'gap'（字符串，非空）和 'acceptance_command'（字符串，非空），且 acceptance_command 是一条可执行的 shell 命令，该命令在单 agent 死亡场景下能验证任务仍完成（退出码 0 表示通过）。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    gap = data.get('gap')\n    cmd = data.get('acceptance_command')\n    if not isinstance(gap, str) or not gap.strip():\n        sys.exit(1)\n    if not isinstance(cmd, str) or not cmd.strip():\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"gap\": \"sa 已具备任务级持久化与断点续跑能力，单 agent 死亡后由守护进程接管剩余步骤，当前仅缺一项：将 agent 心跳超时阈值从 30s 下调至 5s，使接管触发更快。\",\n  \"acceptance_command\": \"kill -9 $(pgrep -f 'sa-agent') && sleep 1 && sa status --task current | grep -q 'completed'\"\n}",
+      "tokens": 741
+    }
+  ]
+}
