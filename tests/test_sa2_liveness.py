@@ -19,6 +19,7 @@ from sa2.forge import org as fo
 from sa2.forge.org import Role
 from sa2.loop.pdca import PDCA
 from sa2.loop.supervisor import DispatchQueue, Supervisor
+from sa2.loop.workers import WorkerPool
 from sa2.memory.profiles import RoleProfile, RoleStore
 
 
@@ -302,6 +303,46 @@ class MidStageResumeTest(unittest.TestCase):
         saved = json.loads(self.state.read_text(encoding="utf-8"))
         self.assertNotIn("partial", saved, "阶段过了，断点要落在下一个阶段，不能留着旧 partial")
         self.assertEqual(saved["stage_index"], 2)
+
+
+class WorkerPoolTest(unittest.TestCase):
+    """S4：多 worker 进程 + 租约——kill -9 一个，另一个租约到期接手。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.ledger = Ledger(self.root / "ledger.jsonl")
+        self.pool = None
+
+    def tearDown(self):
+        if self.pool is not None:
+            self.pool.stop()
+        self.tmp.cleanup()
+
+    def test_completes_a_job(self):
+        self.pool = WorkerPool(self.root, self.ledger, workers=2, ttl=1.0).start()
+        did = self.pool.put("sa2.loop.jobs", "echo", "hello")
+        result = self.pool.wait(did, timeout=15)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["out"], "hello")
+        self.assertGreaterEqual(self.ledger.count("dispatch_done"), 1)
+
+    def test_kill_holder_and_another_takes_over(self):
+        self.pool = WorkerPool(self.root, self.ledger, workers=2, ttl=1.0).start()
+        did = self.pool.put("sa2.loop.jobs", "slow", 3.0, "接管完成")
+        lease = self.pool.wait_lease(did, timeout=10)
+        self.assertIsNotNone(lease, "作业必须先被某个 worker 认领")
+        killed = self.pool.kill_holder(did)
+        self.assertIsNotNone(killed, "要能杀到正在持有租约的那个进程")
+
+        result = self.pool.wait(did, timeout=25)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["out"], "接管完成")
+        self.assertNotEqual(result["worker"], killed, "接手的必须是另一个进程")
+        self.assertEqual(self.ledger.count("lease_expired"), 1)
+        self.assertEqual(self.ledger.count("takeover"), 1, "账本要记跨进程接管")
+        event = [e for e in self.ledger.read() if e["kind"] == "takeover"][0]
+        self.assertEqual(event["payload"]["from"], killed)
 
 
 if __name__ == "__main__":

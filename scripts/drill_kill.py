@@ -25,6 +25,7 @@ from sa2.forge import dims as fd  # noqa: E402
 from sa2.forge import org as fo  # noqa: E402
 from sa2.loop.pdca import PDCA  # noqa: E402
 from sa2.loop.supervisor import DispatchQueue, Supervisor  # noqa: E402
+from sa2.loop.workers import WorkerPool  # noqa: E402
 from sa2.memory.profiles import RoleProfile, RoleStore  # noqa: E402
 
 ORG = json.dumps({
@@ -134,6 +135,28 @@ def phase_process_kill() -> bool:
         return ok
 
 
+def phase_worker_kill() -> bool:
+    print("③ 进程级：kill -9 正在干活的 worker，另一个租约到期接手")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        ledger = Ledger(root / "ledger.jsonl")
+        pool = WorkerPool(root, ledger, workers=2, ttl=1.0).start()
+        try:
+            did = pool.put("sa2.loop.jobs", "slow", 3.0, "接管完成")
+            lease = pool.wait_lease(did, timeout=10)
+            killed = pool.kill_holder(did) if lease else None
+            print(f"   持有租约：{lease and lease.get('worker')}  → 被杀：{killed}")
+            result = pool.wait(did, timeout=25)
+            ok = (result["ok"] and result["out"] == "接管完成"
+                  and result["worker"] != killed and ledger.count("takeover") == 1)
+            print(f"   结果：ok={result['ok']} out={result['out']!r} 接手={result['worker']}")
+            print(f"   账本：lease_expired={ledger.count('lease_expired')} "
+                  f"takeover={ledger.count('takeover')}")
+            return ok
+        finally:
+            pool.stop()
+
+
 def live_produce():
     from sa2 import llm
 
@@ -177,6 +200,8 @@ def phase_live() -> int:
 def main() -> int:
     if "--live" in sys.argv:
         return phase_live()
+    if "--kill-worker" in sys.argv:
+        return 0 if phase_worker_kill() else 1
     a = phase_role_death()
     b = phase_process_kill()
     print(f"\n演练结果：角色死亡={'过' if a else '红'}  进程硬杀={'过' if b else '红'}")
