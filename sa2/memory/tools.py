@@ -130,5 +130,13 @@ class ToolStore:
         self._save(data)
         return dict(entry)
 
+    def of_path(self, path: str | Path) -> dict | None:
+        """按脚本地址反查登记项：判据的 cmd 指向库里的哪把刀。"""
+        target = str(Path(path).expanduser().resolve())
+        for entry in self._load().values():
+            if str(Path(entry.get("path") or "").expanduser().resolve()) == target:
+                return entry
+        return None
+
     def all(self) -> dict:
         return self._load()

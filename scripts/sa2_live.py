@@ -181,6 +181,26 @@ def make_hand(llm, goal: str, book: EvidenceBook, content_dir):
     return hand
 
 
+def record_tool_uses(judge, store: ToolStore) -> list[str]:
+    """本轮真的跑过的检查器，在工具库记一次使用。
+
+    为什么放在这里而不是判据内部：判据只拿到 cmd，不知道自己在库里叫什么；
+    而「谁被用过」是淘汰工具的唯一依据，不记就等于资产库只涨不瘦。
+    """
+    used: list[str] = []
+    for name in sorted(judge.executed()):
+        crit = judge.get(name)
+        cmd = list((crit.spec if crit else {}).get("cmd") or [])
+        if len(cmd) < 2:
+            continue
+        entry = store.of_path(cmd[1])
+        if entry is None:
+            continue
+        store.touch(entry["name"])
+        used.append(entry["name"])
+    return used
+
+
 def _tool_caps(store: ToolStore) -> dict[str, str]:
     """工具名 → 能力标签。编制校验靠它判「这个角色手上是不是真有能用的手」。"""
     caps = {name: str(entry.get("capability") or "") for name, entry in store.all().items()}
@@ -463,6 +483,7 @@ def main() -> int:
                 context=lambda: evidence_block(evidence_book))
     report = pdca.run(decl, evidence=[])
 
+    tool_uses = record_tool_uses(judge, tool_store)
     artifact = run_dir / "deliverable.md"
     artifact.write_text(report.get("text") or "", encoding="utf-8")
     evidence = [f"{artifact}:1", f"dispatches={report['dispatches']}"]
@@ -491,6 +512,7 @@ def main() -> int:
         "org_generated": bool(args.auto_org and not org_error),
         "org_error": org_error,
         "tool": tool_path,
+        "tool_uses": tool_uses,
         "evidence_count": len(evidence_book.all()),
         "citation_problems": citation_problems(report.get("text") or "", evidence_book),
         "tool_error": tool_error,

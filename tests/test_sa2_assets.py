@@ -149,3 +149,37 @@ class NestedBudgetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ToolUsesTest(unittest.TestCase):
+    """「谁被用过」是淘汰工具的唯一依据：跑了不记，资产库只会涨不会瘦。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.store = ToolStore(self.root / "tools")
+        self.script = self.root / "checker.py"
+        self.script.write_text("import sys\nsys.exit(0 if '## 一' in open(sys.argv[1]).read() else 1)\n",
+                               encoding="utf-8")
+        self.entry = self.store.store(self.script, name="章节检查器", owner="leader",
+                                      self_test={"ok": True})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_of_path_maps_cmd_back_to_entry(self):
+        self.assertEqual(self.store.of_path(self.entry["path"])["name"], "章节检查器")
+        self.assertIsNone(self.store.of_path("/nope/nowhere.py"))
+
+    def test_executed_criterion_counts_as_a_use(self):
+        import sys as _sys
+        from scripts import sa2_live
+        from sa2.core.judge import Criterion, Judge
+        judge = Judge(authority=("leader",))
+        judge.register(Criterion(name="章节", kind="exec",
+                                 spec={"cmd": [_sys.executable, self.entry["path"], "{target}"]},
+                                 self_tested=True), proposer="leader")
+        judge.run("章节", "## 一、进展\n正文")
+        used = sa2_live.record_tool_uses(judge, self.store)
+        self.assertEqual(used, ["章节检查器"])
+        self.assertEqual(self.store.get("章节检查器")["uses"], 1)
+        self.assertTrue(self.store.get("章节检查器")["last_used"])
