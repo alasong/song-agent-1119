@@ -168,6 +168,13 @@ class PDCA:
                 feedback = self._feedback(raw)
                 rejects.append({"stage": stage.name, "attempt": attempt,
                                 "problems": problems, "feedback": feedback})
+                # 被拒的产出也落盘：只留一句原因，事后连「是哪一条判据误判」都查不出来
+                if self.artifact_dir:
+                    rejected = self.artifact_dir / "rejected"
+                    rejected.mkdir(parents=True, exist_ok=True)
+                    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in stage.name)
+                    (rejected / f"{index}-{safe}-try{attempt}.md").write_text(
+                        candidate, encoding="utf-8")
                 self.ledger.append("reject", "stage_gate",
                                    {"stage": stage.name, "attempt": attempt, "problems": problems})
                 if attempt == self.max_stage_attempts:
