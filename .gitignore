@@ -10,3 +10,5 @@ __pycache__/
 
 # 执行产物（按日期+任务分目录，不入库；要留证据的放 reports/）
 runs/
+# 资产索引（缓存产物，可由 build 重建）
+.asset-index/
