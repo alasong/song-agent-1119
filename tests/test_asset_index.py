@@ -83,6 +83,29 @@ class AssetIndexTest(unittest.TestCase):
         self.assertEqual(lines[start - 1].strip(), "## 第二节")
         self.assertIn("丁", "\n".join(lines[start - 1:end]))
 
+    def test_markdown_ignores_headings_inside_code_fence(self) -> None:
+        """围栏代码块里的 `# 注释` 不是标题；不跳过会把后面整节吞进假标题。"""
+        (self.root / "fence.md").write_text(
+            "# 真标题\n\n```bash\n# 代码里的注释\nnpm i\n```\n\n## 第二节\n内容\n",
+            encoding="utf-8")
+        rec = json.loads(run("get", "fence.md", "--json", cwd=self.root).stdout)
+        labels = [x["label"] for x in rec["sections"]]
+        self.assertEqual(labels, ["真标题", "第二节"])
+        self.assertEqual(rec["sections"][1]["start"], 8)
+
+    def test_extractor_version_mismatch_forces_rebuild(self) -> None:
+        """抽取逻辑升级后，旧索引的 size/mtime 仍「新鲜」但骨架已错——必须整体作废。"""
+        meta = self.root / ".asset-index" / "meta.json"
+        data = json.loads(meta.read_text(encoding="utf-8"))
+        data["extractor"] = -1
+        meta.write_text(json.dumps(data), encoding="utf-8")
+        stale = run("check", "--root", ".", cwd=self.root)
+        self.assertEqual(stale.returncode, 1)
+        self.assertIn("index-version", stale.stdout)
+        rebuilt = json.loads(run("refresh", "--root", ".", cwd=self.root).stdout)
+        self.assertEqual(rebuilt["added"] + rebuilt["rebuilt"], 6)   # 旧表作废后 6 个 fixture 全部按新增重抽
+        self.assertEqual(run("check", "--root", ".", cwd=self.root).returncode, 0)
+
     def test_json_skeleton_lists_top_level_keys_not_nested(self) -> None:
         rec = json.loads(run("get", "data.json", "--json", cwd=self.root).stdout)
         labels = [s["label"] for s in rec["sections"]]

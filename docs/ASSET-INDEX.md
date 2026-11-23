@@ -79,6 +79,9 @@ get <file>
 
 - **索引只是缓存**，可随时删。骨架行号在读取时必须由 `read` 现场核对；
   拿索引改文件是禁止动作（行号会漂）。
+- **抽取逻辑升级要作废旧索引**：`EXTRACTOR_VERSION` 变了，旧记录的 size/mtime
+  仍然「新鲜」但骨架可能已错——`refresh` 整表重建，`check` 报 `index-version`，
+  `get` 不信旧表。
 - **快模式有盲区**：保留 mtime 的同长度改写查不出来。这是刻意的取舍（否则每次
   都要重算全部 sha，增量就没了）。`check --verify-hashes` 补这个盲区，
   机检里有一条测试专门断言「快模式查不出、深检查得出」。
@@ -130,6 +133,7 @@ P2 是策略选择：频繁提交的仓适合 pre-commit，长跑仓适合定时
 | 并发刷新 | 两个 agent 互相覆盖 | tmp 名带 pid+随机，`os.replace` 原子替换；4 进程并发测试 |
 | 大文件 | >8MB 不算 sha | `check --verify-hashes` 报 `unverified` 并 exit 4（漂移才是 1；`--allow-unverified` 降为 0） |
 | 多命中 | `--section 节` 同时命中两节 | 默认打印全部并 exit 1，`--first` 才取第一个 |
+| 代码块里的 `#` | 被当成章节标题，§8 被拆三截、行号错 | 已修：围栏感知（``` / ~~~），回归测试 `test_markdown_ignores_headings_inside_code_fence` |
 | 漏扫 | `.gitignore` 里的产物被索引 | `SKIP_DIRS` 兜住常见目录；自定义产物目录要显式加 |
 
 ## 6. 泛化到非文件资产（设计，未实现）

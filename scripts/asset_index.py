@@ -40,6 +40,7 @@ from pathlib import Path
 
 SCHEMA = 1
 GENERATOR = "asset-index/1"
+EXTRACTOR_VERSION = 2   # 抽取逻辑变了就 +1：旧索引必须整体重建，不能信 size/mtime
 INDEX_DIR = ".asset-index"
 INDEX_FILE = "index.jsonl"
 META_FILE = "meta.json"
@@ -153,8 +154,24 @@ def _clip(lines: list[str], start: int, end: int) -> tuple[int, int]:
 
 
 def _markdown_sections(lines: list[str]) -> list[dict]:
+    """章节树。围栏代码块里的 `# 注释` 不是标题——不跳过就会把 §8 拆成三截、行号全错。"""
     heads: list[tuple[int, int, str]] = []
+    fence_char: str | None = None
+    fence_len = 0
     for i, line in enumerate(lines, start=1):
+        fence = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            mark = fence.group(1)
+            if fence_char is None:
+                fence_char, fence_len = mark[0], len(mark)
+                continue
+            closing = re.fullmatch(
+                r"\s{0,3}" + re.escape(fence_char) + r"{%d,}\s*" % fence_len, line)
+            if mark[0] == fence_char and closing:
+                fence_char = None
+            continue
+        if fence_char is not None:
+            continue
         m = HEADING.match(line)
         if m:
             heads.append((i, len(m.group(1)), m.group(2)))
@@ -397,6 +414,7 @@ def save_index(root: Path, records: list[dict], root_label: str) -> None:
     meta = {
         "schema": SCHEMA,
         "generator": GENERATOR,
+        "extractor": EXTRACTOR_VERSION,
         "root": root_label,
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "count": len(records),
@@ -439,6 +457,8 @@ def cmd_refresh(args) -> int:
     root = Path(args.root).resolve()
     t0 = time.perf_counter()
     old = load_index(root)
+    if load_meta(root).get("extractor") != EXTRACTOR_VERSION:
+        old = {}          # 抽取逻辑升级：旧骨架可能已错，整表重建
     disk = {rel_of(root, p): p for p in walk_assets(root)}
     stats = {"scanned": len(disk), "unchanged": 0, "hashed": 0,
              "rebuilt": 0, "added": 0, "removed": 0, "dirty_meta_only": 0}
@@ -480,6 +500,9 @@ def cmd_check(args) -> int:
     idx = load_index(root)
     disk = {rel_of(root, p): p for p in walk_assets(root)}
     problems: list[str] = []
+    if load_meta(root).get("extractor") != EXTRACTOR_VERSION:
+        problems.append(f"index-version    extractor={load_meta(root).get('extractor')} "
+                        f"需要 {EXTRACTOR_VERSION}（跑 build/refresh 重建）")
     for rel in sorted(idx):
         if rel not in disk:
             problems.append(f"missing-on-disk  {rel}")
@@ -553,7 +576,8 @@ def cmd_get(args) -> int:
     root = Path(args.root).resolve() if args.root else _discover_root(args.path)
     target = _resolve_target(root, args.path)
     rel = _rel_for(root, target) or Path(args.path).as_posix()
-    has_index = (index_dir(root) / INDEX_FILE).is_file()
+    has_index = ((index_dir(root) / INDEX_FILE).is_file()
+                 and load_meta(root).get("extractor") == EXTRACTOR_VERSION)
 
     if not target.is_file():
         idx = load_index(root) if has_index else {}
