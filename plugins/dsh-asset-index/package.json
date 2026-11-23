@@ -1,0 +1,19 @@
+{
+  "name": "@local/dsh-asset-index",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "asset_index.py",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "description": "DSH tool plugin: skeleton-first asset index (build/refresh/get/check) over any project directory",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

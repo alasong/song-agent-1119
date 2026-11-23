@@ -1,0 +1,5 @@
+# 这个 bundle 被 profile 引入时插入的 loader 行。
+# name 用包名（不是绝对路径）：安装后由 profile 的 node_modules 解析。
+- insert:
+    - id: asset-index
+      name: "@local/dsh-asset-index"
