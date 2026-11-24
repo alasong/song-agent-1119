@@ -84,6 +84,23 @@ class RetryTest(unittest.TestCase):
         self.assertEqual(text, "带用量")
         self.assertEqual(usage["completion_tokens"], 1)
 
+    def test_http_500_is_retried_then_succeeds(self):
+        import urllib.error
+        err = urllib.error.HTTPError(llm.DEFAULT_URL, 500, "server error", {},
+                                     io.BytesIO(b"boom"))
+        calls = {"n": 0}
+
+        def flaky(req, timeout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise err
+            return FakeResponse(payload("成功"))
+
+        with mock.patch.object(llm.urllib.request, "urlopen", side_effect=flaky), \
+                mock.patch.object(llm.time, "sleep"):
+            self.assertEqual(llm.complete([{"role": "user", "content": "hi"}]), "成功")
+        self.assertEqual(calls["n"], 2, "5xx 要重试，且第二次成功就返回")
+
 
 if __name__ == "__main__":
     unittest.main()
