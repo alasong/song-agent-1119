@@ -79,6 +79,18 @@ class PlanRegistryTest(unittest.TestCase):
         got = PlanStore(self.root / "plans.json").get(key)
         self.assertEqual(got["stages"][0]["name"], "起草")
 
+    def test_corrupt_plan_library_is_loud(self):
+        self.store = PlanStore(self.root / "plans.json")
+        (self.root / "plans.json").write_text("{坏了", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "编制库坏了"):
+            self.store.get("任意键")
+
+    def test_mark_reuse_of_unknown_key_is_a_noop(self):
+        self._plan()
+        before = (self.root / "plans.json").read_text(encoding="utf-8")
+        self.store.mark_reuse("不存在的键")
+        self.assertEqual((self.root / "plans.json").read_text(encoding="utf-8"), before)
+
 
 if __name__ == "__main__":
     unittest.main()
