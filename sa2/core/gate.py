@@ -70,6 +70,19 @@ def check_criteria(judge: Judge, decl: Declaration) -> list[str]:
     return problems
 
 
+def check_dependencies(note) -> list[str]:
+    """step 级输入门：这一步想过依赖没有。
+
+    note 为 None = 没提交断言单 = 没想过依赖；空清单同样拒。
+    只判「写成什么样才算想过」，不判依赖够不够——那是结果门与验证方的事。
+    """
+    from .deps import check
+
+    if note is None:
+        return ["这一步没有提交依赖断言单：等于没想过依赖，不许开工"]
+    return check(note)
+
+
 def check_evidence(items) -> list[str]:
     problems: list[str] = []
     for raw in items or ():

@@ -20,6 +20,8 @@ from ..core.budget import Budget
 from ..core.gate import Declaration
 from ..core.judge import Judge
 from ..core.ledger import Ledger
+from ..core import deps as depbook
+from .. import config
 from ..forge.org import OrgPlan
 from ..memory import lessons as lessonbook
 from ..memory.cases import CaseBook
@@ -32,7 +34,8 @@ class PDCA:
                  state_path: str | Path | None = None, resume: bool = False,
                  artifact_dir: str | Path | None = None, parallel: bool = False,
                  hand=None, context=None, lesson_path: str | Path | None = None,
-                 supervisor=None):
+                 supervisor=None, dep_notes: dict | None = None,
+                 require_deps: bool = False, stop_requested=None):
         """produce(role, stage, upstream, attempt, feedback) -> str。
 
         feedback 是上一轮这一阶段被拒的原因；第一次尝试为空串。
@@ -58,6 +61,11 @@ class PDCA:
         self.artifact_dir = Path(artifact_dir) if artifact_dir else None
         self.parallel = parallel
         self.supervisor = supervisor
+        # 依赖断言单：按阶段（= step）挂，require_deps=True 时没有单子就零调用。
+        self.dep_notes = dict(dep_notes or {})
+        self.require_deps = require_deps
+        # 外部叫停：每次进阶段前问一次；命中就停在这一阶段之前，已完成的阶段不重跑。
+        self.stop_requested = stop_requested
 
     def run(self, decl: Declaration, seed: str = "", evidence=None) -> dict:
         # ① 前置门：任何一条不成立，一次调用都不发
@@ -99,9 +107,28 @@ class PDCA:
         counters = {"dispatches": 0}
         before: dict[str, str] = {}      # 阶段成功时的上游快照：交付门回退要从这里重做
         for index, stage in enumerate(self.plan.stages[start:], start=start):
+            if self.stop_requested is not None and self.stop_requested():
+                self.ledger.append("pause_external", "loop", {"from_stage": stage.name})
+                return self._report(False, f"外部叫停：停在阶段「{stage.name}」之前",
+                                    dispatches=counters["dispatches"], budget=budget)
             # 判据对生成方必须是可见的：看不见要求，只能猜，猜不中就红两次。
             # 可见 ≠ 可控：生成方知道要求是什么，但改不了判据本身。
             requirements = self._requirements(stage)
+            if self.require_deps:
+                note = self.dep_notes.get(stage.name)
+                problems = gate.check_dependencies(note)
+                if problems:
+                    problems = [f"{stage.name}：{p}" for p in problems]
+                    self.ledger.append("preflight_reject", "gate",
+                                       {"stage": stage.name, "problems": problems})
+                    return self._report(
+                        False, f"阶段「{stage.name}」依赖门未过",
+                        dispatches=counters["dispatches"], budget=budget,
+                        problems=problems)
+                for item in note.items:
+                    self.ledger.append("dependency_claim", "deps", {
+                        "stage": stage.name, "name": item.name, "cls": item.cls,
+                        "claim": item.claim, "verify": item.verify})
             feedback = ""                      # 上一轮被拒的原因：重做必须带着它，否则是盲重做
             for attempt in range(1, self.max_stage_attempts + 1):
                 seeded = partial if (partial
@@ -112,7 +139,8 @@ class PDCA:
                                                 index=index, text_before=text, ran=ran,
                                                 seeded=seeded)
                 if assembled is None:
-                    self.ledger.append("budget_stop", "loop", budget.snapshot())
+                    self.ledger.append("pause_auto", "loop",
+                                       {"reason": "budget", **budget.snapshot()})
                     return self._report(False, budget.why(f"{stage.name} 之前"),
                                         redone=redone, rejects=rejects,
                                         dispatches=counters["dispatches"], budget=budget)
@@ -188,6 +216,15 @@ class PDCA:
                             self._write_artifact(self.artifact_dir,
                                                  f"{len(self.plan.stages) - 1}-{stage.name}.md",
                                                  candidate)
+
+        # ②c 结果门回填：交付门最终仍红 → 断言没覆盖到真正出错的地方，记漏报
+        if delivery and self.require_deps:
+            for stage_name, dep_note in self.dep_notes.items():
+                for name in depbook.missed(dep_note, delivery):
+                    self.ledger.append("claim_missed", "deps", {
+                        "stage": stage_name, "name": name,
+                        "problems": delivery[:3],
+                        "penalty": config.get("penalty_missed")})
 
         # ③ 证据门 + ④ 不静默失败
         evidence = list(evidence or ())

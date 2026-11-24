@@ -28,6 +28,7 @@ _ALLOWED = {
     "formats": {"schema", "marker", "reference_ids"},
     "thresholds": {"schema", "values"},
     "classify": {"schema", "failure_patterns"},
+    "deps": {"schema", "classes"},
 }
 
 # 每份文件必填的键
@@ -37,6 +38,7 @@ _REQUIRED = {
     "formats": {"schema", "marker", "reference_ids"},
     "thresholds": {"schema", "values"},
     "classify": {"schema", "failure_patterns"},
+    "deps": {"schema", "classes"},
 }
 
 _CACHE: dict[str, dict] = {}
@@ -144,12 +146,46 @@ def _validate_classify(name: str, data: dict) -> None:
             _fail(name, f"failure_patterns 用了未登记的 failure_kind：{rule['kind']!r}")
 
 
+# 依赖一级类：新增一类必须改这里（=人审）；子类在 deps.json 里自由加。
+_DEPS_CLASSES = ("team", "method", "process", "tool", "other")
+
+
+def _validate_deps(name: str, data: dict) -> None:
+    classes = data.get("classes")
+    if not isinstance(classes, dict) or not classes:
+        _fail(name, "classes 必须是非空对象")
+    if set(classes) != set(_DEPS_CLASSES):
+        extra = sorted(set(classes) - set(_DEPS_CLASSES))
+        lack = sorted(set(_DEPS_CLASSES) - set(classes))
+        _fail(name, f"一级类固定为 {list(_DEPS_CLASSES)}；多出 {extra}、缺少 {lack}。"
+                    f"新增一级类要改 loader 并人审，子类放 sub 里")
+    for key, cfg in classes.items():
+        if not isinstance(cfg, dict):
+            _fail(name, f"类 {key} 必须是对象")
+        missing = {"label", "why"} - set(cfg)
+        if missing:
+            _fail(name, f"类 {key} 缺字段 {sorted(missing)}")
+        extra = set(cfg) - {"label", "why", "sub"}
+        if extra:
+            _fail(name, f"类 {key} 有未登记字段 {sorted(extra)}")
+        for key2 in ("label", "why"):
+            if not str(cfg[key2] or "").strip():
+                _fail(name, f"类 {key} 的 {key2} 不能为空")
+        sub = cfg.get("sub")
+        if not isinstance(sub, list):
+            _fail(name, f"类 {key} 的 sub 必须是数组")
+        for item in sub:
+            if not isinstance(item, str) or not item.strip():
+                _fail(name, f"类 {key} 的 sub 只能是非空字符串")
+
+
 _VALIDATORS = {
     "sources": _validate_sources,
     "vocab": _validate_vocab,
     "formats": _validate_formats,
     "thresholds": _validate_thresholds,
     "classify": _validate_classify,
+    "deps": _validate_deps,
 }
 
 

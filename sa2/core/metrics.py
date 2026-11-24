@@ -41,6 +41,15 @@ def compute(events: list[dict], readings: dict | None = None) -> dict:
     nonempty = sum(1 for e in events
                    if e.get("kind") == "dispatch"
                    and int((e.get("payload") or {}).get("chars") or 0) > 0)
+    # 依赖三读数：只从账本能算出的量里取，算不出就是 None，不拿零冒充
+    claims = [e for e in events if e.get("kind") == "dependency_claim"]
+    verified = count("claim_verified")
+    falsified = count("claim_falsified")
+    missed = count("claim_missed")
+    claim_stages = {(e.get("payload") or {}).get("stage") for e in claims
+                    if (e.get("payload") or {}).get("stage")}
+    ok_stages = {e.get("actor") for e in events if e.get("kind") == "stage_ok"}
+    judged = verified + falsified + missed
 
     out = {
         "dispatches": dispatches,
@@ -54,9 +63,17 @@ def compute(events: list[dict], readings: dict | None = None) -> dict:
         "communication_efficiency": (nonempty / dispatches) if dispatches else None,
         "resource_efficiency": (chars * 1000.0 / tokens) if tokens else None,
         "delivery_passed": passed if delivery else None,
+        # 依赖三读数：覆盖率按阶段算，命中率按断言算，缺口率按漏报算
+        "dep_coverage": (len(claim_stages) / len(ok_stages)) if ok_stages else None,
+        "claim_hit_rate": (verified / judged) if judged else None,
+        "dep_gap_rate": (missed / len(claims)) if claims else None,
         "flags": [],
         "unavailable": list(UNAVAILABLE),
     }
+    if out["dep_coverage"] is not None and out["dep_coverage"] < 1:
+        out["flags"].append("有阶段没写依赖断言：覆盖率 < 1")
+    if out["dep_gap_rate"] and out["dep_gap_rate"] > 0.2:
+        out["flags"].append("依赖缺口发现率偏高：断言没覆盖住真正出错的地方")
     if out["validation_pass_rate"] is not None and out["validation_pass_rate"] >= 0.99 and rejects == 0:
         out["flags"].append("校验通过率过高（≈100% 且零拒收）：门可能太松")
     if out["takeover_rate"] and out["takeover_rate"] > 0.2:

@@ -77,6 +77,21 @@ class Budget:
         return Budget(tokens=min(int(limit), remaining), usage=self.usage,
                       parent=self, usage_start=len(self.usage))
 
+    def share(self, ratio: float) -> "Budget":
+        """按父池剩余的比例开子份额：ratio=0.3 → 三成给依赖优化。"""
+        remaining = max(0, self.tokens - self.spent)
+        ratio = min(1.0, max(0.0, float(ratio)))
+        return self.child(int(remaining * ratio))
+
+    def split(self, ratio: float | None = None) -> tuple["Budget", "Budget"]:
+        """切成 (依赖侧, 执行侧)；比例默认取 thresholds 的 dep_budget_ratio。"""
+        from .. import config
+        if ratio is None:
+            ratio = config.get("dep_budget_ratio")
+        dep = self.share(ratio)
+        work = self.share(1.0 - float(ratio))
+        return dep, work
+
     def why(self, where: str = "") -> str:
         tail = f"，停在 {where}" if where else ""
         head = f"预算用尽：本层已花 {self.spent} > 本层上限 {self.tokens} tokens"

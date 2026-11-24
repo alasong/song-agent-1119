@@ -1,0 +1,86 @@
+"""W3：依赖断言单的机械校验 + 依赖环检测。"""
+import unittest
+
+from sa2.core import deps
+from sa2.knowledge.loader import _DEPS_CLASSES, _validate_deps, KnowledgeError
+
+
+def good() -> deps.DepNote:
+    return deps.DepNote("stage-1", (
+        deps.Assertion("抓取工具", "tool",
+                       "能取回至少 2 条 arxiv 记录",
+                       "cmd:python3 -c 'print(1)'", "换成 hn 源"),
+        deps.Assertion("验证角色", "team",
+                       "验证方与写手不是同一个进程",
+                       "path:tests/test_deps.py", "起独立 worker"),
+    ))
+
+
+class TestDepsNote(unittest.TestCase):
+    def test_good_note_passes(self):
+        self.assertEqual(deps.check(good()), [])
+
+    def test_empty_items_is_thinking_nothing(self):
+        problems = deps.check(deps.DepNote("stage-1", ()))
+        self.assertTrue(any("没有登记任何依赖" in p for p in problems), problems)
+
+    def test_empty_step_rejected(self):
+        note = deps.DepNote("", good().items)
+        self.assertTrue(any("步骤名" in p for p in deps.check(note)))
+
+    def test_bad_verify_prefix_rejected(self):
+        item = deps.Assertion("工具", "tool", "能取回至少 2 条记录", "跑一下看看", "换源")
+        problems = deps.check(deps.DepNote("s", (item,)))
+        self.assertTrue(any("验法" in p for p in problems), problems)
+
+    def test_unknown_class_rejected(self):
+        item = deps.Assertion("人", "people", "这个人能按期交付结果", "cmd:x", "换人")
+        problems = deps.check(deps.DepNote("s", (item,)))
+        self.assertTrue(any("不在" in p for p in problems), problems)
+
+    def test_short_claim_rejected(self):
+        item = deps.Assertion("工具", "tool", "能用", "cmd:x", "换源")
+        problems = deps.check(deps.DepNote("s", (item,)))
+        self.assertTrue(any("断言太短" in p for p in problems), problems)
+
+    def test_missing_if_false_rejected(self):
+        item = deps.Assertion("工具", "tool", "能取回至少 2 条记录", "cmd:x", "")
+        problems = deps.check(deps.DepNote("s", (item,)))
+        self.assertTrue(any("若假" in p for p in problems), problems)
+
+    def test_duplicate_name_rejected(self):
+        item = good().items[0]
+        problems = deps.check(deps.DepNote("s", (item, item)))
+        self.assertTrue(any("重名" in p for p in problems), problems)
+
+    def test_gap_must_point_to_item(self):
+        note = deps.DepNote("s", good().items, ("不存在的依赖",))
+        self.assertTrue(any("没有对应的依赖条目" in p for p in deps.check(note)))
+
+    def test_classes_are_five_fixed(self):
+        self.assertEqual(deps.classes(), _DEPS_CLASSES)
+
+
+class TestAcyclic(unittest.TestCase):
+    def test_dag_has_no_cycle(self):
+        self.assertEqual(deps.acyclic([("a", "b"), ("b", "c"), ("a", "c")]), [])
+
+    def test_cycle_is_reported(self):
+        cycle = deps.acyclic([("a", "b"), ("b", "a")])
+        self.assertEqual(cycle[0], cycle[-1])
+        self.assertEqual(set(cycle), {"a", "b"})
+
+    def test_self_loop_is_reported(self):
+        self.assertEqual(deps.acyclic([("a", "a")]), ["a", "a"])
+
+
+class TestDepsKnowledge(unittest.TestCase):
+    def test_sixth_class_needs_human(self):
+        data = {"classes": {name: {"label": name, "why": name, "sub": []}
+                            for name in _DEPS_CLASSES + ("money",)}}
+        with self.assertRaises(KnowledgeError):
+            _validate_deps("deps", data)
+
+
+if __name__ == "__main__":
+    unittest.main()
