@@ -66,6 +66,22 @@ class DeliveryCheckTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("R5" in m for m in result["missing"]))
 
+    def test_unbulleted_reasons_are_red(self):
+        """依据不是条目式：一段大白话里就算写了「否掉」，也数不出 1–3 条。"""
+        text = GOOD.replace(
+            "- 选共用一套裸称规则 → 否掉了两处各写一份，上次就是这么漂的。\n"
+            "- 选先写检查再接线 → 现有产物先红，才能证明它不是摆设。",
+            "选共用一套裸称规则 → 否掉了两处各写一份，上次就是这么漂的。")
+        result = delivery.check(text)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("R3" in m and "条目式" in m for m in result["missing"]))
+
+    def test_optimal_inside_a_code_fence_is_not_bare(self):
+        """代码块里讨论「最优」是引用别人的话，不算裸称；围栏要能开也关。"""
+        text = GOOD.replace("## 证据",
+                            "```\n这个方案是最优的\n```\n\n## 证据")
+        self.assertTrue(delivery.check(text)["ok"], delivery.check(text)["missing"])
+
     def test_quoted_discussion_is_allowed(self):
         text = GOOD.replace("全部可判红。", "全部可判红；「最优」这个词按 OPTIMALITY 的 L1/L2 改用。")
         self.assertTrue(delivery.check(text)["ok"])
