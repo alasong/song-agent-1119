@@ -209,6 +209,69 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.calls, [])
         self.assertTrue(any("未登记的判据" in p for p in report["problems"]), report["problems"])
 
+    def test_persistent_rejection_is_written_to_case_book(self):
+        """阶段连续被拒两次要进案例库：下一次同类失败才查得到。"""
+        from sa2.memory.cases import CaseBook
+
+        cases = CaseBook(self.root / "cases.jsonl")
+
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
+            return "" if role.kind != "executor" else f"{S1}\n"
+
+        plan = fo.parse_plan("目标", ORG)
+        pdca = PDCA(make_judge(), Ledger(self.root / "c.jsonl"), plan, produce, fd.VOCAB,
+                    max_stage_attempts=2, cases=cases)
+        report = pdca.run(self._decl())
+        self.assertFalse(report["passed"])
+        stored = cases.all()
+        self.assertEqual([c.stage for c in stored], ["起草"])
+        self.assertIn("缺章节", stored[0].reason)
+
+    def test_delivery_redo_writes_the_artifact(self):
+        """交付门回退重做成功时，新稿要落盘——否则事后无法核「回退到底改了什么」。"""
+        from sa2.forge import criteria as fc2
+
+        judge = make_judge()
+        judge.register(fc2.tested(fc2.propose_content(
+            "交付要素", ["结论："], ("correctness",))), proposer="leader")
+
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
+            if role.kind != "executor":
+                return ""
+            if stage == "起草":
+                return f"{S1}\n{S2}\n"
+            if attempt == 1:
+                return f"{S1}\n{S2}\n{S3}\n"
+            return f"{S1}\n结论：收口\n{S2}\n{S3}\n"
+
+        art = self.root / "artifacts"
+        pdca = PDCA(judge, Ledger(self.root / "a.jsonl"), fo.parse_plan("目标", ORG),
+                    produce, fd.VOCAB, artifact_dir=art)
+        report = pdca.run(self._decl(criteria=("起草齐全", "成稿齐全", "交付要素")))
+        self.assertTrue(report["passed"], report)
+        written = (art / "1-成稿.md").read_text(encoding="utf-8")
+        self.assertIn("结论：收口", written,
+                      "回退重做后的稿子必须覆盖上一版：只写阶段首次产出的文件不算")
+
+    def test_requirements_skip_unregistered_stage_gate(self):
+        plan = fo.parse_plan("目标", ORG)
+        bad = replace(plan.stages[0], gate_criteria=("没登记的判据", "起草齐全"))
+        pdca = PDCA(make_judge(), Ledger(self.root / "r.jsonl"),
+                    replace(plan, stages=(bad,) + plan.stages[1:]), self._produce(), fd.VOCAB)
+        text = pdca._requirements(bad)
+        self.assertIn("必须包含：", text)
+        self.assertNotIn("没登记的判据", text)
+
+    def test_parallel_stage_stops_when_budget_is_gone(self):
+        """预算在进入下一阶段时耗尽：并行分支也要先停，不许派活。"""
+        art = self.root / "par"
+        pdca = PDCA(make_judge(), Ledger(self.root / "p.jsonl"),
+                    fo.parse_plan("目标", ORG), self._produce(), fd.VOCAB, parallel=True)
+        report = pdca.run(self._decl(budget_tokens=1))
+        self.assertFalse(report["passed"])
+        self.assertIn("pause_auto", Ledger(self.root / "p.jsonl").kinds())
+        self.assertFalse(art.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
