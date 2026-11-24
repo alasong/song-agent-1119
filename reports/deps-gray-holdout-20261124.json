@@ -1,0 +1,105 @@
+{
+  "summary": {
+    "criteria": [
+      "交付·引用",
+      "交付·体量",
+      "交付·出处"
+    ],
+    "rounds": 10,
+    "passed": 9,
+    "items": 50,
+    "with_supports": 50,
+    "supports_coverage": 1.0
+  },
+  "rows": [
+    {
+      "round": 1,
+      "goal": "判断要不要给 sa2 引入任务优先级队列，给出依据与止损。",
+      "ok": true,
+      "items": 6,
+      "with_supports": 6,
+      "tokens": 1109,
+      "seconds": 4.8
+    },
+    {
+      "round": 2,
+      "goal": "写一份上线检查清单：依赖、回滚、监控各一条。",
+      "ok": true,
+      "items": 5,
+      "with_supports": 5,
+      "tokens": 858,
+      "seconds": 3.9
+    },
+    {
+      "round": 3,
+      "goal": "评估把依赖断言单从每阶段改成每角色，代价是什么。",
+      "ok": false,
+      "error": "DepError: 断言单 JSON 解析失败：Expecting ',' delimiter: line 1 column 1577 (char 1576)",
+      "tokens": 1048,
+      "seconds": 4.3
+    },
+    {
+      "round": 4,
+      "goal": "给「工具质量」设计一条可机检的判据。",
+      "ok": true,
+      "items": 5,
+      "with_supports": 5,
+      "tokens": 1060,
+      "seconds": 4.7
+    },
+    {
+      "round": 5,
+      "goal": "判断 sa2 的判定层该不该拆成独立进程，说明理由。",
+      "ok": true,
+      "items": 4,
+      "with_supports": 4,
+      "tokens": 827,
+      "seconds": 4.1
+    },
+    {
+      "round": 6,
+      "goal": "设计一次故障演练：杀掉 worker 后接手，判据是什么。",
+      "ok": true,
+      "items": 6,
+      "with_supports": 6,
+      "tokens": 1223,
+      "seconds": 4.9
+    },
+    {
+      "round": 7,
+      "goal": "给一次真实交付写证据清单：来源、时间、可定位位置。",
+      "ok": true,
+      "items": 7,
+      "with_supports": 7,
+      "tokens": 1449,
+      "seconds": 5.6
+    },
+    {
+      "round": 8,
+      "goal": "总结这次依赖机制改动对预算的影响，给读数。",
+      "ok": true,
+      "items": 6,
+      "with_supports": 6,
+      "tokens": 1055,
+      "seconds": 4.6
+    },
+    {
+      "round": 9,
+      "goal": "判断断言单的 supports 字段能不能自动生成，给出方案。",
+      "ok": true,
+      "items": 5,
+      "with_supports": 5,
+      "tokens": 1078,
+      "seconds": 4.1
+    },
+    {
+      "round": 10,
+      "goal": "写一段说明：为什么漏报要按判据归因，而不是整单罚。",
+      "ok": true,
+      "items": 6,
+      "with_supports": 6,
+      "tokens": 1021,
+      "seconds": 3.9
+    }
+  ]
+}

@@ -21,6 +21,7 @@
 | W11 | 依赖三读数 | `sa2/core/metrics.py` | `python3 -m unittest tests.test_metrics_deps -q` | ✅ 绿（5 条） |
 | W12 | 生产入口接线（`--require-deps` 开关，默认关） | `scripts/sa2_live.py`、`sa2/forge/deps.py` | `python3 scripts/sa2_live.py --help \| grep -q require-deps` | ✅ 绿（4 条测试 + 入口可查） |
 | W13 | 租约自愈与死进程接管（flaky 排查产物） | `sa2/loop/workers.py` | `python3 -m unittest tests.test_worker_claim -q` | ✅ 绿（5 条） |
+| W14 | 漏报按 supports 归因 | `sa2/core/deps.py`、`sa2/forge/deps.py`、`scripts/sa2_live.py` | `python3 -m unittest tests.test_deps tests.test_deps_backfill tests.test_sa2_deps_forge -q` | ✅ 绿（27 条 + holdout 10 轮） |
 
 ## 逐条说明
 
@@ -175,3 +176,13 @@ $ python3 -m unittest discover -s tests -t . -q                     # 连跑 3 �
 ## 决策记录：`--require-deps` 默认值
 
 推荐维持默认关，先灰度。门槛：连续 10 次 `--require-deps` 真跑，断言单首轮通过率 ≥ 80%、无一次因坏单中断、三个读数的缺口率有数据；达标再翻默认。理由：多一次模型调用是小事，坏单直接 `exit 2` 会阻断任务，而断言单在真模型上的质量还没有读数。
+## 第六批证据（2026-11-24，W14 supports 归因）
+
+```
+$ python3 -m unittest tests.test_deps tests.test_deps_backfill tests.test_sa2_deps_forge -q   # Ran 27, OK
+$ python3 -m unittest discover -s tests -t . -q                                              # Ran 478, OK
+```
+
+- 漏报只在「失败判据 ∈ 断言 supports」时记；没有 supports 的断言不罚。
+- holdout 10 个未见目标：首轮 9/10，supports 覆盖 50/50 条 = 100%。
+- 残余失败是模型 JSON 缺逗号（~10%），建议加一次有界重试再翻默认。
