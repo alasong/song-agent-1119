@@ -82,12 +82,29 @@ class BlindTest(unittest.TestCase):
         self.assertEqual(flipped["second"]["结论"], 3)
         self.assertEqual(flipped["order"], "flipped")
 
+
+    def test_missing_dimension_is_not_dominance(self):
+        self.assertFalse(dominates({"tokens": 1}, {"chars": 1}, {"tokens": -1}))
+
+    def test_no_usable_dimension_caps_at_l0(self):
+        arms = {"single": {"passed": True, "tokens": 100},
+                "team": {"passed": True, "tokens": 300}}
+        out = verdict(arms, budget=1000, criteria_version="c1", dims={"nope": 1})
+        self.assertEqual(out["level"], "L0")
+        self.assertIn("没有可比较的维度", "；".join(out["problems"]))
+
     def test_malformed_scores_are_loud(self):
         with self.assertRaises(ValueError):
             blind_score("A", "B", lambda m, max_tokens=None: "不是 JSON", flip=False)
         with self.assertRaises(ValueError):
             blind_score("A", "B", self._llm(9, 0), flip=False)   # 9 分越界
+        with self.assertRaisesRegex(ValueError, "不是合法 JSON"):
+            blind_score("A", "B", lambda m, max_tokens=None: "{坏了}", flip=False)
 
+        with self.assertRaises(ValueError):
+            blind_score("A", "B", lambda m, max_tokens=None: json.dumps(
+                {"1": {d: 1 for d in ("结论", "证据", "取舍", "局限", "可执行")}},
+                ensure_ascii=False), flip=False)   # 只给了一份分数
 
 if __name__ == "__main__":
     unittest.main()
