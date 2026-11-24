@@ -111,6 +111,10 @@ def _run_job(job: dict):
 def worker_main(root: str, name: str, ttl: float, ledger_path: str | None = None) -> None:
     """worker 进程主循环：认领 → 心跳 → 执行 → 写结果。"""
     root = Path(root)
+    # 子目录由入口自己保证：WorkerPool 会建，但直接 `python -m sa2.loop.worker` 时没有，
+    # 缺 lease/ 会让第一次认领直接 FileNotFoundError（实测由进程内用例抓出来）。
+    for sub in ("dispatch", "lease", "result"):
+        (root / sub).mkdir(parents=True, exist_ok=True)
     ledger = Ledger(ledger_path or (root / "ledger.jsonl"))
     stop_file = root / "stop"
     while not stop_file.exists():
