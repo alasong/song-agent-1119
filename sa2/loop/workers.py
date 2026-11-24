@@ -62,7 +62,23 @@ def _claim(lease_path: Path, worker: str, pid: int, ttl: float) -> dict | None:
         fd = os.open(lease_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     except FileExistsError:
         current = _read(lease_path)
-        if current and float(current.get("expires_at") or 0) < _now():
+        if current is None:
+            # 空/半写文件：刚建的可能是别的 worker 正在写（O_EXCL 建文件到写入之间有窗口），
+            # 给它一个 ttl 的宽限；超过宽限还坏着，才按坏租约抢占——否则作业永远没人领。
+            try:
+                age = _now() - lease_path.stat().st_mtime
+            except OSError:
+                age = float("inf")
+            if age < ttl:
+                return None
+            _write(lease_path, payload)
+            return {}
+        pid = current.get("pid")
+        # 三条抢占条件：没有 pid（坏数据）、持有者进程已死、租约已过期。
+        expired = (not pid
+                   or float(current.get("expires_at") or 0) < _now()
+                   or not _pid_alive(pid))
+        if expired:
             _write(lease_path, payload)
             return current
         return None
