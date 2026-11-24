@@ -45,7 +45,8 @@ def make_judge():
 
 def note(step):
     return DepNote(step, (
-        Assertion("抓取工具", "tool", "能取回至少 2 条真实记录", "cmd:true", "换源"),
+        Assertion("抓取工具", "tool", "能取回至少 2 条真实记录", "cmd:true", "换源",
+                 supports=("整篇齐全",)),
     ))
 
 

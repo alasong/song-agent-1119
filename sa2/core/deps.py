@@ -34,6 +34,9 @@ class Assertion:
     claim: str
     verify: str
     if_false: str
+    # 这条依赖支撑哪几条交付判据（判据名）。没有它就归因不了漏报——
+    # 交付失败时既不能全算漏报，也不能装作没发生。
+    supports: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -62,10 +65,13 @@ def parse(data: dict) -> DepNote:
         missing = {"name", "cls", "claim", "verify", "if_false"} - set(item)
         if missing:
             raise DepError(f"第 {i} 条依赖缺字段 {sorted(missing)}")
+        supports = item.get("supports") or []
+        if not isinstance(supports, list):
+            raise DepError(f"第 {i} 条依赖的 supports 必须是数组")
         items.append(Assertion(**{
             key: str(item[key]).strip()
             for key in ("name", "cls", "claim", "verify", "if_false")
-        }))
+        }, supports=tuple(str(s).strip() for s in supports if str(s).strip())))
     gaps = data.get("gaps") or []
     if not isinstance(gaps, list):
         raise DepError("gaps 必须是数组")
@@ -145,9 +151,21 @@ def depth_ok(depth: int) -> dict:
 
 
 def missed(note: DepNote, problems) -> list[str]:
-    """结果门红了：问题里没点到的依赖，算漏报——断言没覆盖到真正出错的地方。"""
-    text = "；".join(str(p) for p in (problems or ()))
-    return [item.name for item in note.items if item.name not in text]
+    """交付门红了：只把「支撑失败判据」的依赖算漏报。
+
+    没有声明 supports 的依赖不参与漏报统计——没有归因就不罚，
+    否则引用/体量这类与依赖无关的失败会把所有断言都记成漏报。
+    """
+    failed: set[str] = set()
+    for problem in problems or ():
+        text = str(problem)
+        for sep in (":", "："):
+            if sep in text:
+                failed.add(text.split(sep, 1)[0].strip())
+                break
+    if not failed:
+        return []
+    return [item.name for item in note.items if set(item.supports) & failed]
 
 
 def dispatch(item: Assertion, *, verifier=None, ledger=None, stage="") -> dict:

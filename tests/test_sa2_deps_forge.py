@@ -11,10 +11,10 @@ def plan(*stages):
     return SimpleNamespace(stages=[SimpleNamespace(name=s) for s in stages])
 
 
-def item(verify="cmd:true"):
+def item(verify="cmd:true", supports=()):
     return {"name": "抓取工具", "cls": "tool",
             "claim": "能取回至少 2 条真实记录", "verify": verify,
-            "if_false": "换成 hn 源"}
+            "if_false": "换成 hn 源", "supports": list(supports)}
 
 
 def llm_for(payload):
@@ -38,6 +38,17 @@ class ProposeTest(unittest.TestCase):
     def test_no_json_is_rejected(self):
         with self.assertRaises(deps.DepError):
             forge_deps.propose("目标", plan("起草"), lambda m, max_tokens=0: "随便写写")
+
+    def test_unknown_supports_rejected(self):
+        payload = {"stages": {"起草": {"items": [item(supports=("没这份判据",))]}}}
+        with self.assertRaises(deps.DepError) as caught:
+            forge_deps.propose("目标", plan("起草"), llm_for(payload), criteria=("交付·引用",))
+        self.assertIn("supports", str(caught.exception))
+
+    def test_supports_in_criteria_passes(self):
+        payload = {"stages": {"起草": {"items": [item(supports=("交付·引用",))]}}}
+        notes = forge_deps.propose("目标", plan("起草"), llm_for(payload), criteria=("交付·引用",))
+        self.assertEqual(notes["起草"].items[0].supports, ("交付·引用",))
 
     def test_bad_verify_is_rejected(self):
         payload = {"stages": {"起草": {"items": [item("跑一下看看")]}}}

@@ -82,5 +82,27 @@ class TestDepsKnowledge(unittest.TestCase):
             _validate_deps("deps", data)
 
 
+class MissedTest(unittest.TestCase):
+    """漏报按 supports 归因：与依赖无关的交付失败不罚。"""
+
+    def note(self, supports):
+        item = deps.Assertion("抓取工具", "tool", "能取回至少 2 条记录",
+                              "cmd:true", "换源", supports=supports)
+        return deps.DepNote("s", (item,))
+
+    def test_supports_failed_criterion_is_missed(self):
+        self.assertEqual(deps.missed(self.note(("交付·引用",)), ["交付·引用: 0 条 < 3"]),
+                         ["抓取工具"])
+
+    def test_unrelated_failure_is_not_missed(self):
+        self.assertEqual(deps.missed(self.note(("交付·引用",)), ["交付·体量: 700 < 1200"]), [])
+
+    def test_no_supports_means_no_penalty(self):
+        self.assertEqual(deps.missed(self.note(()), ["交付·引用: 0 条 < 3"]), [])
+
+    def test_chinese_colon_prefix_also_works(self):
+        self.assertEqual(deps.missed(self.note(("证据门",)), ["证据门：不可定位"]), ["抓取工具"])
+
+
 if __name__ == "__main__":
     unittest.main()

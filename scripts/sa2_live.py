@@ -527,7 +527,7 @@ def main() -> int:
         from sa2.core import deps as core_deps
         from sa2.forge import deps as forge_deps
         try:
-            dep_notes = forge_deps.propose(goal, plan, llm)
+            dep_notes = forge_deps.propose(goal, plan, llm, criteria=decl.criteria)
         except core_deps.DepError as exc:
             print(f"依赖断言单不合格：{exc}", file=sys.stderr)
             return 2
