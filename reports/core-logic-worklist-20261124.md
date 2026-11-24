@@ -20,6 +20,7 @@
 | W10 | 结果门回填漏报 | `loop/pdca.py`、`core/deps.py` | `python3 -m unittest tests.test_deps_backfill -q` | ✅ 绿（3 条） |
 | W11 | 依赖三读数 | `sa2/core/metrics.py` | `python3 -m unittest tests.test_metrics_deps -q` | ✅ 绿（5 条） |
 | W12 | 生产入口接线（`--require-deps` 开关，默认关） | `scripts/sa2_live.py`、`sa2/forge/deps.py` | `python3 scripts/sa2_live.py --help \| grep -q require-deps` | ✅ 绿（4 条测试 + 入口可查） |
+| W13 | 租约自愈与死进程接管（flaky 排查产物） | `sa2/loop/workers.py` | `python3 -m unittest tests.test_worker_claim -q` | ✅ 绿（5 条） |
 
 ## 逐条说明
 
@@ -153,3 +154,24 @@ $ python3 scripts/claim_check.py
 ```
 
 W12 的形状：`forge/deps.py` 一次调用生成全部阶段的断言单，产出必须过 `core.deps.check`；不过就 `return 2`，不带着坏单开工。单子生成后先记 `dependency_note` 事件，再交给 PDCA。默认关是因为它多一次模型调用——开不开是成本决策，不是机制决策。
+
+## 第五批证据（2026-11-24，W13 租约修复）
+
+```
+$ python3 -m unittest tests.test_worker_claim -q                    # Ran 5, OK
+$ python3 -m unittest tests.test_sa2_liveness.WorkerPoolTest -q     # 连跑 3 次 OK
+$ python3 -m unittest discover -s tests -t . -q                     # 连跑 3 次 OK（469 tests）
+```
+
+排查记录：
+
+- 现象：一次契约验收 flaky——`派活 j-… 在 25s 内没有结果`，原命令重跑通过。
+- 复现：单测连跑 10 次、全量连跑 3 次，均未复现；**原 flake 未能确证根因**。
+- 但排查中发现两个真缺陷，已修：
+  1. 初领任务时 `O_EXCL` 建文件到写入之间有窗口，另一个 worker 把空文件当坏租约抢走 → 同一作业被两个进程同时执行（修前事件序列：两条 `dispatch_leased`、零 `lease_expired`）；
+  2. 空/坏租约原实现直接返回 None，作业永远没人领——表现正是"等待超时"。
+- 修后事件序列回到设计意图：`dispatch_leased → worker_killed → lease_expired → takeover → dispatch_leased → dispatch_done`。
+
+## 决策记录：`--require-deps` 默认值
+
+推荐维持默认关，先灰度。门槛：连续 10 次 `--require-deps` 真跑，断言单首轮通过率 ≥ 80%、无一次因坏单中断、三个读数的缺口率有数据；达标再翻默认。理由：多一次模型调用是小事，坏单直接 `exit 2` 会阻断任务，而断言单在真模型上的质量还没有读数。
