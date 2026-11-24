@@ -80,6 +80,25 @@ class DevLoopTest(unittest.TestCase):
         self.assertEqual(out["rounds"], 2)
         self.assertEqual(self.ledger.count("dev_failed"), 1)
 
+    def test_missing_target_is_refused_before_any_call(self):
+        calls: list[int] = []
+        with self.assertRaisesRegex(DevRefused, "目标不存在"):
+            self._loop(lambda m, max_tokens=None: calls.append(1) or GOOD).run(
+                replace(self.ticket, target="没有这个文件.py"))
+        self.assertEqual(calls, [], "目标不存在时一次模型都不许调")
+
+    def test_missing_code_block_is_recorded_and_retried(self):
+        replies = iter(["这一轮我先解释思路，不给代码", GOOD])
+
+        def llm(messages, max_tokens=None):
+            return next(replies)
+
+        out = self._loop(llm).run(self.ticket)
+        self.assertTrue(out["passed"], out)
+        self.assertEqual(out["rounds"], 2, "没有代码块算一轮失败，要带着反馈重来")
+        self.assertEqual(self.ledger.count("dev_no_code"), 1)
+        self.assertEqual(self.ledger.count("dev_apply"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
