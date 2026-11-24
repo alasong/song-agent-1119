@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from sa2.core import evidence as sa2_evidence
 from sa2.core.evidence import (Evidence, EvidenceBook, EvidenceError,
                                citation_problems, digest_of, markers, stamp)
 
@@ -127,6 +128,61 @@ class CitationTest(unittest.TestCase):
 
     def test_markers_are_ordered_and_deduped(self):
         self.assertEqual(markers("[S2] 和 [S1]，又见 [S2]"), ["S2", "S1"])
+
+
+class CheckCitationsTest(unittest.TestCase):
+    """交付判据 citations：条数够不够、在不在台账、新不新——一个 spec 说清三件事。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "content"
+        self.book_path = Path(self.tmp.name) / "evidence.jsonl"
+        self.book = EvidenceBook(self.book_path)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def add(self, eid="S1", when=datetime(2026, 11, 1, 9, 0, 0), content="https://example.org/x 取回的数据"):
+        self.book.add(stamp("https://example.org/x", content, "leader", eid,
+                            self.root, now=when))
+
+    def test_missing_book_is_named(self):
+        problems = sa2_evidence.check_citations("见 [S1]。", {})
+        self.assertTrue(any("缺 book" in p for p in problems), problems)
+
+    def test_too_few_citations_is_the_first_problem(self):
+        self.add()
+        problems = sa2_evidence.check_citations("见 [S1]。", {"book": str(self.book_path), "min": 3})
+        self.assertIn("引用 1 条 < 要求 3 条", problems[0])
+
+    def test_enough_fresh_citations_pass(self):
+        self.add("S1")
+        self.add("S2", content="另一份取回")
+        spec = {"book": str(self.book_path), "min": 2}
+        self.assertEqual(sa2_evidence.check_citations("见 [S1] 与 [S2]。", spec), [])
+
+    def test_stale_citation_respects_spec_window(self):
+        self.add(when=datetime(2025, 1, 1, 9, 0, 0))
+        spec = {"book": str(self.book_path), "min": 1, "max_age_days": 30}
+        problems = sa2_evidence.check_citations("见 [S1]。", spec)
+        self.assertTrue(any("撑不起「最新」" in p for p in problems), problems)
+
+    def test_checker_closure_uses_its_book(self):
+        run = sa2_evidence.checker(self.book)
+        self.assertTrue(any("不在证据台账" in p for p in run("见 [S9]。")))
+        self.add("S1")
+        self.assertEqual([p for p in run("见 [S1]。") if "距今" not in p], [])
+
+    def test_blank_line_in_book_is_skipped(self):
+        self.add("S1")
+        with self.book_path.open("a", encoding="utf-8") as fh:
+            fh.write("\n")
+        self.assertEqual([ev.evidence_id for ev in self.book.all()], ["S1"])
+
+    def test_add_without_id_is_refused(self):
+        ev = stamp("https://example.org/x", "内容", "leader", "", self.root)
+        with self.assertRaisesRegex(EvidenceError, "缺 id"):
+            self.book.add(ev)
 
 
 if __name__ == "__main__":

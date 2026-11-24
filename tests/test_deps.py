@@ -104,5 +104,54 @@ class MissedTest(unittest.TestCase):
         self.assertEqual(deps.missed(self.note(("证据门",)), ["证据门：不可定位"]), ["抓取工具"])
 
 
+class TestDepsParse(unittest.TestCase):
+    """parse 是模型输出进系统的唯一入口：形状不对要当场抛，不能带着半张单往下走。"""
+
+    def base(self) -> dict:
+        return {"step": "抓取", "items": [{
+            "name": "抓取工具", "cls": "tool", "claim": "能取回至少 2 条记录",
+            "verify": "cmd:true", "if_false": "换源"}]}
+
+    def test_non_object_is_refused(self):
+        with self.assertRaisesRegex(deps.DepError, "必须是对象"):
+            deps.parse(["不是 dict"])
+
+    def test_items_must_be_list(self):
+        with self.assertRaisesRegex(deps.DepError, "缺 items"):
+            deps.parse({"step": "抓取", "items": "抓取工具"})
+
+    def test_item_must_be_object(self):
+        payload = self.base()
+        payload["items"] = ["抓取工具"]
+        with self.assertRaisesRegex(deps.DepError, "第 1 条依赖必须是对象"):
+            deps.parse(payload)
+
+    def test_item_missing_field_names_the_field(self):
+        payload = self.base()
+        payload["items"][0].pop("if_false")
+        with self.assertRaisesRegex(deps.DepError, "缺字段"):
+            deps.parse(payload)
+
+    def test_supports_must_be_list(self):
+        payload = self.base()
+        payload["items"][0]["supports"] = "交付·引用"
+        with self.assertRaisesRegex(deps.DepError, "supports 必须是数组"):
+            deps.parse(payload)
+
+    def test_gaps_must_be_list(self):
+        payload = self.base()
+        payload["gaps"] = "缺一个抓取工具"
+        with self.assertRaisesRegex(deps.DepError, "gaps 必须是数组"):
+            deps.parse(payload)
+
+    def test_parse_strips_and_drops_empty_supports(self):
+        payload = self.base()
+        payload["items"][0]["supports"] = ["  交付·引用 ", ""]
+        note = deps.parse(payload)
+        self.assertEqual(note.step, "抓取")
+        self.assertEqual(note.items[0].name, "抓取工具")
+        self.assertEqual(note.items[0].supports, ("交付·引用",))
+
+
 if __name__ == "__main__":
     unittest.main()
