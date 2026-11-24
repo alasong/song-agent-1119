@@ -74,6 +74,41 @@ class ResourceBookTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.book.approve("r-不存在")
 
+class ResourceBookEdgeTest(unittest.TestCase):
+    """账本初建与批准时的余额复核：池是唯一真源，两层都不许透支。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "ledger.jsonl"
+
+    def test_first_book_requires_total(self):
+        with self.assertRaisesRegex(ValueError, "必须给总额"):
+            ResourceBook(Ledger(self.path))
+
+    def test_amount_must_be_positive(self):
+        book = ResourceBook(Ledger(self.path), total=1000, auto_ceiling=100)
+        for amount in (0, -5):
+            with self.assertRaisesRegex(ValueError, "金额必须为正"):
+                book.request(amount, "白拿")
+
+    def test_request_over_remaining_is_refused(self):
+        book = ResourceBook(Ledger(self.path), total=100, auto_ceiling=10)
+        result = book.request(150, "超池")
+        self.assertEqual(result["status"], "refused")
+        self.assertEqual(book.spent(), 0)
+
+    def test_approve_after_pool_shrinks_is_refused_and_recorded(self):
+        book = ResourceBook(Ledger(self.path), total=300, auto_ceiling=100)
+        pending = book.request(250, "买数据")
+        book.request(90, "小实验")          # 批准前池子被别的支出缩小
+        self.assertEqual(book.remaining(), 210)
+        refused = book.approve(pending["id"], by="leader")
+        self.assertEqual(refused["status"], "refused")
+        self.assertIn("池不足", refused["reason"])
+        self.assertEqual(book.spent(), 90, "被拒的批准不许扣款")
+        self.assertEqual(book.pending(), [], "被拒的那条要出队")
+
 
 if __name__ == "__main__":
     unittest.main()
