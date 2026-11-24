@@ -56,6 +56,16 @@ class ProposeTest(unittest.TestCase):
             forge_deps.propose("目标", plan("起草"), llm_for(payload))
         self.assertIn("验法", str(caught.exception))
 
+    def test_broken_json_is_rejected(self):
+        with self.assertRaisesRegex(deps.DepError, "JSON 解析失败"):
+            forge_deps.propose("目标", plan("起草"),
+                               lambda m, max_tokens=0: "{这不是 JSON}")
+
+    def test_stages_must_be_object(self):
+        with self.assertRaisesRegex(deps.DepError, "缺 stages 对象"):
+            forge_deps.propose("目标", plan("起草"),
+                               lambda m, max_tokens=0: json.dumps({"stages": []}))
+
 
 if __name__ == "__main__":
     unittest.main()
