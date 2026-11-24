@@ -1,0 +1,106 @@
+[
+  {
+    "round": 1,
+    "goal": "把这次改动写成三句话的变更说明：改了什么、为什么、怎么验。",
+    "ok": true,
+    "items": {
+      "起草": 2,
+      "成稿": 3
+    },
+    "tokens": 758,
+    "seconds": 5.7
+  },
+  {
+    "round": 2,
+    "goal": "判断要不要把 sa2_live 的默认预算从 60k 降到 30k，给出依据与止损。",
+    "ok": true,
+    "items": {
+      "起草": 3,
+      "成稿": 3
+    },
+    "tokens": 864,
+    "seconds": 4.7
+  },
+  {
+    "round": 3,
+    "goal": "给 sa 的依赖断言单定一条最小字段规范，并说明为什么是这几个字段。",
+    "ok": true,
+    "items": {
+      "起草": 2,
+      "成稿": 3
+    },
+    "tokens": 921,
+    "seconds": 3.9
+  },
+  {
+    "round": 4,
+    "goal": "判断 sa2 的依赖断言单要不要进默认流水线，给出依据与止损。",
+    "ok": false,
+    "error": "DepError: 起草：缺口 'sa2 依赖枚举工具（若 deps 子命令不存在）' 没有对应的依赖条目；起草：缺口 '断言单模板（若 tools/assertion_template.json 缺失）' 没有对应的依赖条目；成稿：缺口 '断言单解析器（若 ci-lint assertions 不可用）' 没有对应的依赖条目；成稿：缺口 '止损自动化回退脚本（若 policy 无法自动执行）' 没有对应的依赖条目",
+    "tokens": 1306,
+    "seconds": 6.7
+  },
+  {
+    "round": 5,
+    "goal": "把依赖断言单的失败模式列成三条，并给每条的兜底动作。",
+    "ok": false,
+    "error": "DepError: 成稿：缺口 'tools/check_assertions.py：用于成稿结构校验的脚本，当前工作区未确认存在，需新建或登记为缺口' 没有对应的依赖条目",
+    "tokens": 845,
+    "seconds": 3.0
+  },
+  {
+    "round": 6,
+    "goal": "给一次真实交付写证据清单：来源、时间、可定位位置。",
+    "ok": true,
+    "items": {
+      "起草": 3,
+      "成稿": 3
+    },
+    "tokens": 1059,
+    "seconds": 4.8
+  },
+  {
+    "round": 7,
+    "goal": "判断 step 级输入门会不会拖慢运行，给出测量方案。",
+    "ok": true,
+    "items": {
+      "起草": 3,
+      "成稿": 3
+    },
+    "tokens": 943,
+    "seconds": 6.1
+  },
+  {
+    "round": 8,
+    "goal": "写一段说明：为什么断言必须是可证伪的，而不是「工具可用」。",
+    "ok": true,
+    "items": {
+      "起草": 2,
+      "成稿": 2
+    },
+    "tokens": 769,
+    "seconds": 3.9
+  },
+  {
+    "round": 9,
+    "goal": "给 sa2_live 的 --require-deps 设计一个灰度方案，含判停条件。",
+    "ok": true,
+    "items": {
+      "起草": 3,
+      "成稿": 3
+    },
+    "tokens": 1257,
+    "seconds": 6.3
+  },
+  {
+    "round": 10,
+    "goal": "总结这次依赖机制改动的风险，按发生概率排序。",
+    "ok": true,
+    "items": {
+      "起草": 3,
+      "成稿": 3
+    },
+    "tokens": 971,
+    "seconds": 4.8
+  }
+]
