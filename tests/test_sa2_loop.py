@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from dataclasses import replace
 import unittest
 from pathlib import Path
 
@@ -67,6 +68,13 @@ class LoopTest(unittest.TestCase):
         return PDCA(judge or make_judge(), Ledger(self.root / "l.jsonl"), plan, produce,
                     fd.VOCAB, max_stage_attempts=attempts)
 
+    def _pdca_with_hand(self, produce, hand):
+        plan = fo.parse_plan("目标", ORG)
+        roles = tuple(replace(r, tools=("arxiv",)) if r.name == "执行" else r
+                      for r in plan.roles)
+        return PDCA(make_judge(), Ledger(self.root / "h.jsonl"),
+                    replace(plan, roles=roles), produce, fd.VOCAB, hand=hand)
+
     def _decl(self, **kw):
         base = dict(goal="写东西", dims=("correctness", "test_quality"),
                     criteria=("起草齐全", "成稿齐全"), budget_tokens=100_000)
@@ -77,6 +85,36 @@ class LoopTest(unittest.TestCase):
         report = self._pdca(self._produce()).run(self._decl())
         self.assertTrue(report["passed"], report)
         self.assertEqual(report["rejects"], [])
+
+    def test_hand_failure_is_loud_and_recorded(self):
+        """手失败不许静默降级成「没素材」：先记账，再把异常抛出去。"""
+        def hand(role, stage):
+            raise RuntimeError("取回失败")
+
+        pdca = self._pdca_with_hand(self._produce(), hand)
+        with self.assertRaises(RuntimeError):
+            pdca.run(self._decl())
+        failed = [e for e in pdca.ledger.read() if e["kind"] == "hand_failed"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["payload"]["stage"], "起草")
+        self.assertIn("RuntimeError: 取回失败", failed[0]["payload"]["error"])
+
+    def test_hand_material_reaches_the_writer(self):
+        seen = {}
+
+        def produce(role, stage, upstream, attempt, feedback="", requirements=""):
+            seen.setdefault((stage, role.name), upstream)
+            return f"{S1}\n{S2}\n{S3}\n" if stage == "成稿" else f"{S1}\n{S2}\n"
+
+        def hand(role, stage):
+            return "素材：arxiv 取回 2 条"
+
+        pdca = self._pdca_with_hand(produce, hand)
+        report = pdca.run(self._decl())
+        self.assertTrue(report["passed"], report)
+        self.assertIn("素材：arxiv", seen[("起草", "执行")])
+        hands = [e for e in pdca.ledger.read() if e["kind"] == "hand"]
+        self.assertEqual(hands[0]["payload"]["chars"], len("素材：arxiv 取回 2 条"))
 
     def test_rejection_redoes_only_that_stage(self):
         report = self._pdca(self._produce(fail_first_on="成稿")).run(self._decl())
