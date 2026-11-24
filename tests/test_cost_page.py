@@ -46,6 +46,9 @@ class CostPageTest(unittest.TestCase):
         self.assertEqual(render(self.run_dir), render(self.run_dir), "同输入必同输出")
         self.assertEqual(render(self.run_dir)["tokens"], 1234)
 
+    def test_non_object_page_is_red(self):
+        self.assertEqual(check(None, self.run_dir), ["交付物不是对象"])
+
 
 if __name__ == "__main__":
     unittest.main()
