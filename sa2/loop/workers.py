@@ -216,7 +216,29 @@ class WorkerPool:
             if result:
                 return result
             time.sleep(0.02)
-        raise TimeoutError(f"派活 {dispatch_id} 在 {timeout}s 内没有结果")
+        raise TimeoutError(f"派活 {dispatch_id} 在 {timeout}s 内没有结果；"
+                           f"{self._diagnose(dispatch_id)}")
+
+    def _diagnose(self, dispatch_id: str) -> str:
+        """超时把现场带上：派单/租约/结果、worker 存活、日志尾巴。
+
+        没有这一行，下一次 flake 还是只能重跑靠猜。
+        """
+        dispatch = _read(self.root / "dispatch" / f"{dispatch_id}.json")
+        lease = _read(self.root / "lease" / f"{dispatch_id}.json")
+        result = _read(self.root / "result" / f"{dispatch_id}.json")
+        alive = {name: proc.poll() is None for name, proc in self._procs.items()}
+        tails = []
+        for log in sorted(self.root.glob("worker-*.log")):
+            try:
+                lines = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+            except OSError:
+                lines = []
+            if lines:
+                tails.append(f"{log.name}: {lines[-1][:160]}")
+        head = (f"派单存在={bool(dispatch)} 租约={lease} 结果={bool(result)} "
+                f"worker存活={alive}")
+        return head + ("；日志尾：" + " | ".join(tails) if tails else "")
 
     def submit(self, module: str, func: str, *args, timeout: float = 30.0, **kwargs) -> dict:
         return self.wait(self.put(module, func, *args, **kwargs), timeout=timeout)
