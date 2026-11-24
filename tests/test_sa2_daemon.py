@@ -90,6 +90,18 @@ class DaemonTest(unittest.TestCase):
         out = drain(self.backlog, self.ledger, self.judge, good_produce, {"correctness": "正确性"})
         self.assertEqual(out["ran"], 0)
 
+    def test_tick_loop_sleeps_between_ticks_only(self):
+        from sa2.autonomy.tick import tick_loop
+
+        self.backlog.add(make_goal("写第一份"))
+        self.backlog.add(make_goal("写第二份"))
+        slept: list[float] = []
+        results = tick_loop(self.backlog, self.ledger, self.judge, good_produce,
+                            {"correctness": "正确性"}, max_ticks=2, interval=0.5,
+                            sleep=slept.append)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(slept, [0.5], "跑完一个还有下一个才睡；最后一次不睡")
+
 
 if __name__ == "__main__":
     unittest.main()
