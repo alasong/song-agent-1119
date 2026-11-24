@@ -259,6 +259,8 @@ def main() -> int:
                     help="任务类型决定挂哪些交付判据：default=引用≥3；annotation=只保体量；engineering=必须有测试")
     ap.add_argument("--reuse", action="store_true",
                     help="同目标已有判据就复用，不再让模型重新造")
+    ap.add_argument("--require-deps", action="store_true",
+                    help="开工前要求每阶段提交依赖断言单（多一次模型调用；默认关）")
     args = ap.parse_args()
 
     profile = gate_profiles.get(args.task_type)
@@ -520,13 +522,28 @@ def main() -> int:
         pool = WorkerPool(run_dir / "pool", ledger, workers=args.pool, ttl=5.0).start()
         produce = PoolProducer(pool, scribe.prompt, max_tokens=scribe.max_tokens,
                                timeout=600, usage=usage)
+    dep_notes = {}
+    if args.require_deps:
+        from sa2.core import deps as core_deps
+        from sa2.forge import deps as forge_deps
+        try:
+            dep_notes = forge_deps.propose(goal, plan, llm)
+        except core_deps.DepError as exc:
+            print(f"依赖断言单不合格：{exc}", file=sys.stderr)
+            return 2
+        for stage_name, dep_note in dep_notes.items():
+            ledger.append("dependency_note", "forge",
+                          {"stage": stage_name, "items": len(dep_note.items),
+                           "gaps": list(dep_note.gaps)})
+
     pdca = PDCA(judge, ledger, plan, produce, fd.VOCAB, usage=usage,
                 max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),
                 artifact_dir=run_dir / "stages",
                 hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"),
                 context=lambda: evidence_block(evidence_book),
-                lesson_path=registry.lessons_path())
+                lesson_path=registry.lessons_path(),
+                require_deps=args.require_deps, dep_notes=dep_notes)
     try:
         report = pdca.run(decl, evidence=[])
     finally:
