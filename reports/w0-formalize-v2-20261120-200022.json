@@ -1,0 +1,433 @@
+{
+  "step": "W0-formalize-v2",
+  "at": "2026-11-20T20:00:22",
+  "samples": 24,
+  "l1_passed": 19,
+  "l2_passed": 4,
+  "l1_rate": 0.792,
+  "l2_rate": 0.167,
+  "note": "L2=判据能拒掉格式齐全但结论错的稿子；仍不等于语义判对",
+  "rows": [
+    {
+      "id": "A",
+      "task": "判断我们该不该做 agent 创业方向；如果做，选哪个方向、不选什么，给出依据与止损。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，包含以下四个二级标题（## 决策结论、## 选择方向、## 不选方向、## 依据与止损），且每个标题下至少有一行非空内容；决策结论必须明确包含“做”或“不做”之一；选择方向和不选方向必须各列出至少一个具体方向；依据与止损必须包含至少一条依据和一条止损条件。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    required = ['## 决策结论', '## 选择方向', '## 不选方向', '## 依据与止损']\n    for h in required:\n        if h not in text:\n            sys.exit(1)\n    sections = {}\n    for h in required:\n        start = text.find(h)\n        if start == -1:\n            sys.exit(1)\n        start += len(h)\n        next_h = len(text)\n        for other in required:\n            if other == h:\n                continue\n            pos = text.find(other, start)\n            if pos != -1 and pos < next_h:\n                next_h = pos\n        content = text[start:next_h].strip()\n        if not content:\n            sys.exit(1)\n        sections[h] = content\n    conclusion = sections['## 决策结论']\n    if '做' not in conclusion and '不做' not in conclusion:\n        sys.exit(1)\n    if '做' in conclusion and '不做' in conclusion:\n        pass\n    direction = sections['## 选择方向']\n    if not re.search(r'[-*]\\s*\\S+', direction) and not re.search(r'\\d+\\.\\s*\\S+', direction):\n        sys.exit(1)\n    not_direction = sections['## 不选方向']\n    if not re.search(r'[-*]\\s*\\S+', not_direction) and not re.search(r'\\d+\\.\\s*\\S+', not_direction):\n        sys.exit(1)\n    basis = sections['## 依据与止损']\n    if '依据' not in basis or '止损' not in basis:\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "## 决策结论\n\n做。Agent 创业方向当前处于技术成熟度与市场需求的交汇点，我们应果断进入。\n\n## 选择方向\n\n选择**垂直行业客服 Agent**（优先电商售后场景）。该方向任务边界清晰、对话数据易获取、ROI 可量化，适合小团队快速验证。\n\n## 不选方向\n\n不选**通用个人助理 Agent**。该方向巨头环伺、用户预期发散、变现路径模糊，早期团队难以建立壁垒。\n\n## 依据与止损\n\n依据：电商售后咨询占客服总量 60% 以上，单次人工成本约 3 元，Agent 可降至 0.5 元以下，付费意愿明确。\n\n止损：若 6 个月内签约付费客户不足 5 家，或单客户月均调用量低于 1 万次，即停止投入并转向。",
+      "tokens": 1258
+    },
+    {
+      "id": "B",
+      "task": "给山西刚过特控线的考生一份专业与志愿建议，要能落地。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一份针对山西2024年高考物理类（或历史类）成绩刚过特控线（即高考总分在特控线上0~15分内）考生的专业与志愿建议文档，且文档中至少包含：①明确写出考生省份为山西、科类、分数与特控线的差值；②列出不少于5个具体可报考的专业名称（含专业代码或所属专业类）；③列出不少于3所具体院校名称并说明其近年在山西的录取最低分/位次与特控线的关系；④给出至少一条关于“冲/稳/保”志愿梯度或服从调剂的落地操作建议。",
+      "checker": "import sys, re\np = sys.argv[1]\ntry:\n    t = open(p, encoding='utf-8').read()\nexcept Exception:\n    sys.exit(1)\nif len(t) < 200:\n    sys.exit(1)\n# 1. 省份+科类+分数差\nif not re.search(r'山西', t):\n    sys.exit(1)\nif not re.search(r'(物理|历史|理工|文史)', t):\n    sys.exit(1)\nif not re.search(r'(特控线|特殊类型招生控制线)', t):\n    sys.exit(1)\nif not re.search(r'\\d+\\s*分', t):\n    sys.exit(1)\n# 2. 至少5个专业名称（简单启发：出现“专业”或常见专业词）\nmajors = re.findall(r'[\\u4e00-\\u9fa5]{2,10}(?:专业|类)', t)\nif len(set(majors)) < 5:\n    # 退而求其次：统计常见专业关键词\n    kw = ['计算机','软件','电气','机械','土木','临床','法学','会计','汉语言','数学','物理','化学','生物','经济','金融','管理','英语','新闻','电子','通信','自动化','材料','能源','环境','建筑','护理','药学','口腔','预防','农学','园林','动物','食品']\n    cnt = sum(1 for k in kw if k in t)\n    if cnt < 5:\n        sys.exit(1)\n# 3. 至少3所院校名称（含“大学”或“学院”）\ninsts = re.findall(r'[\\u4e00-\\u9fa5]{2,15}(?:大学|学院)', t)\nif len(set(insts)) < 3:\n    sys.exit(1)\n# 4. 录取分数/位次与特控线关系\nif not re.search(r'(位次|最低分|录取线|投档线)', t):\n    sys.exit(1)\n# 5. 冲稳保或服从调剂建议\nif not (re.search(r'冲', t) and re.search(r'稳', t) and re.search(r'保', t)) and not re.search(r'服从调剂', t):\n    sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "**山西2024年物理类刚过特控线考生专业与志愿建议**\n\n**一、考生定位**\n山西省2024年高考物理类考生，总分比特控线高8分（特控线上0~15分区间），属于“压线考生”。该分数段在本科一批次中竞争力有限，需以“保录取、保专业”为核心策略。\n\n**二、推荐专业（5个）**\n1. 080701 电子信息工程（工学，就业面宽）\n2. 080901 计算机科学与技术（注意：该分数段需选报省内二本院校该专业）\n3. 081001 土木工程（招生计划多，录取分数相对温和）\n4. 100701 药学（医学门类，省内医科院校有缺额）\n5. 120203K 会计学（管理学，文理兼收，适配面广）\n\n**三、可参考院校**\n1. 中北大学：2023年在晋物理类最低录取分约比特控线高30分，位次约3.2万，**压线考生可将其作为“稳”档填报**。\n2. 山西大同大学：近三年物理类最低分基本与特控线持平，位",
+      "tokens": 1646
+    },
+    {
+      "id": "C",
+      "task": "判断要不要把 sa 重做成双环：内环确定性收敛、外环探索。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，包含一个标题为 'Decision' 的章节，其内容为 'Yes' 或 'No'（不区分大小写），且当内容为 'Yes' 时，同一文件包含标题为 'Inner Loop' 和 'Outer Loop' 的章节，分别描述确定性收敛和探索。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    # find Decision section\n    m = re.search(r'^#+\\s*Decision\\s*$', text, re.MULTILINE | re.IGNORECASE)\n    if not m:\n        sys.exit(1)\n    start = m.end()\n    # find next heading or end\n    next_heading = re.search(r'^#+\\s', text[start:], re.MULTILINE)\n    if next_heading:\n        section = text[start:start+next_heading.start()]\n    else:\n        section = text[start:]\n    content = section.strip().lower()\n    if content not in ('yes', 'no'):\n        sys.exit(1)\n    if content == 'yes':\n        if not re.search(r'^#+\\s*Inner Loop\\s*$', text, re.MULTILINE | re.IGNORECASE):\n            sys.exit(1)\n        if not re.search(r'^#+\\s*Outer Loop\\s*$', text, re.MULTILINE | re.IGNORECASE):\n            sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "# SA 双环重构评估\n\n## Decision\nYes\n\n## Inner Loop\n内环负责确定性收敛。保留现有模拟退火主循环，固定随机种子与温度衰减表，在给定初值下重复执行直至相邻两轮目标函数差值低于 1e-6，确保同一输入必然得到同一解。内环不引入任何随机重启或邻域扰动策略变更，收敛判据、接受准则与冷却曲线均沿用当前实现，仅将迭代上限从 10^5 收紧至 10^4 以缩短单次收敛时间。\n\n## Outer Loop\n外环负责探索。每轮外环从内环输出解出发，对邻域结构做一次随机扰动（交换、插入、反转三选一），并以 Metropolis 准则决定是否接受外环候选解；外环温度独立于内环，按几何级数缓慢下降。外环记录历史最优解与访问过的解空间区域，用于调整下一轮扰动的算子权重。\n\n## 结论\n双环结构将确定性收敛与随机探索解耦，内环保证可复现性，外环维持跳出局部最优的能力，建议按上述方案实",
+      "tokens": 1063
+    },
+    {
+      "id": "D",
+      "task": "把本周做的事写成一页给领导的周报：做了什么、卡在哪、下周做什么。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "给定文件是一个 Markdown 文档，包含三个二级标题（## 做了什么、## 卡在哪、## 下周做什么），每个标题下至少有一行非空内容，且全文不超过一页（约 500 字）。",
+      "checker": "import sys, re\npath = sys.argv[1]\ntry:\n    text = open(path, encoding='utf-8').read()\nexcept Exception:\n    sys.exit(1)\nrequired = ['## 做了什么', '## 卡在哪', '## 下周做什么']\nfor h in required:\n    if h not in text:\n        sys.exit(1)\n# 检查每个标题下至少有一行非空内容\nsections = re.split(r'^## ', text, flags=re.M)\nfound = {}\nfor sec in sections[1:]:\n    lines = sec.split('\\n')\n    title = lines[0].strip()\n    body = '\\n'.join(lines[1:]).strip()\n    if title in ['做了什么', '卡在哪', '下周做什么']:\n        if not body:\n            sys.exit(1)\n        found[title] = True\nif len(found) != 3:\n    sys.exit(1)\n# 字数限制（粗略：去掉空白后字符数 <= 500）\nif len(re.sub(r'\\s', '', text)) > 500:\n    sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "## 做了什么\n本周完成客户管理系统二期需求评审，输出评审纪要并同步至项目群；上线数据看板 V1.2，新增三项核心指标；配合测试组完成回归测试两轮，缺陷修复率 92%。\n\n## 卡在哪\n接口联调受第三方供应商排期影响，原定周三的对接推迟至下周一；数据迁移方案中历史订单字段映射仍有 3 处待业务方确认，暂未闭环。\n\n## 下周做什么\n推进第三方接口联调并完成首轮验证；组织业务方确认字段映射，冻结迁移方案；启动看板 V1.3 需求梳理，输出初稿。",
+      "tokens": 850
+    },
+    {
+      "id": "E",
+      "task": "判断三条 AI 科研自动化路线（自动做实验 / 自动写作与审稿 / 自动选题）哪条值得押，给依据。",
+      "l1": false,
+      "l2": false,
+      "why": "L1 未过",
+      "predicate": "交付物是一个非空文本文件，其中明确从『自动做实验』、『自动写作与审稿』、『自动选题』三条路线中选出一条作为『值得押』的路线，并给出至少一条可核验的依据（如引用具体系统、基准、数据或已发表结果），且不包含与所选路线矛盾的结论。",
+      "checker": "import sys, re\np = sys.argv[1]\ntry:\n    t = open(p, encoding='utf-8').read()\nexcept Exception:\n    sys.exit(1)\nif not t.strip():\n    sys.exit(1)\nroutes = ['自动做实验', '自动写作与审稿', '自动选题']\nchosen = [r for r in routes if r in t]\nif len(chosen) != 1:\n    sys.exit(1)\n# 必须有依据关键词\nif not re.search(r'(依据|证据|数据|基准|benchmark|实验|结果|引用|论文|系统|案例)', t, re.I):\n    sys.exit(1)\n# 不能同时出现『值得押』指向多条路线（简单检测：『值得押』附近 30 字内出现另一路线名）\nfor m in re.finditer('值得押', t):\n    seg = t[max(0, m.start()-30):m.end()+30]\n    others = [r for r in routes if r != chosen[0] and r in seg]\n    if others:\n        sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 1,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "经综合评估，建议优先押注「自动写作与审稿」路线。\n\n依据如下：该路线已有较成熟的系统与可核验结果支撑。以 PaperQA2 为例，其在 LitQA2 基准上对科学文献问答的准确率显著超过人类专家基线，并已用于自动生成带引用的综述草稿；在审稿侧，基于大语言模型的评审系统在多项会议评审一致性测试中与人类评审的相关系数达到 0.4 以上，且能稳定产出结构化审稿意见。相比之下，自动做实验受限于硬件闭环与安全约束，自动选题则缺乏可复现的量化基准，二者短期内难以形成可交付的科研产出。\n\n需要说明的是，自动写作与审稿并不追求替代科研判断，而是嵌入写作、润色、引用核查与初筛评审等环节，因而落地阻力最小、迭代反馈最快。其产出可直接度量（引用准确率、评审一致性、返修率），便于持续优化。综合技术成熟度与可验证性，该路线最值得押。",
+      "tokens": 1021
+    },
+    {
+      "id": "F",
+      "task": "给 sa 的外环实验定一条预算上限，并说明什么情况下判停。",
+      "l1": true,
+      "l2": true,
+      "why": "",
+      "predicate": "交付物是一个包含两个字段的JSON对象：'budget_cap'（数值，表示外环实验的预算上限，单位与实验一致）和'stop_condition'（非空字符串，描述判停条件）；且budget_cap > 0，stop_condition中必须明确提及预算耗尽或达到上限时判停。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    if 'budget_cap' not in data or 'stop_condition' not in data:\n        sys.exit(1)\n    cap = data['budget_cap']\n    cond = data['stop_condition']\n    if not isinstance(cap, (int, float)) or isinstance(cap, bool) or cap <= 0:\n        sys.exit(1)\n    if not isinstance(cond, str) or not cond.strip():\n        sys.exit(1)\n    cond_lower = cond.lower()\n    keywords = ['预算', 'budget', '上限', 'cap', '耗尽', 'exhaust', '达到', 'reach']\n    if not any(k in cond_lower for k in keywords):\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "{\"budget_cap\": 0, \"stop_condition\": \"当外环实验的累计收益连续三个周期低于基线时判停，无需考虑预算情况。\"}",
+      "tokens": 791
+    },
+    {
+      "id": "G",
+      "task": "评估把 sa2_live 切到 --pool 2 是否值得：成本与收益各是什么。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个文本文件，其中明确列出将 sa2_live 切换到 --pool 2 的成本项和收益项，且成本项和收益项各至少包含一个具体条目。",
+      "checker": "import sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    lower = text.lower()\n    cost_keywords = ['成本', 'cost', '代价', '开销', '支出', '费用']\n    benefit_keywords = ['收益', 'benefit', '好处', '回报', '利润', '优点']\n    has_cost = any(kw in lower for kw in cost_keywords)\n    has_benefit = any(kw in lower for kw in benefit_keywords)\n    if not (has_cost and has_benefit):\n        sys.exit(1)\n    # 简单检查成本项和收益项下是否有具体条目（非空行或列表项）\n    lines = [line.strip() for line in text.splitlines() if line.strip()]\n    cost_section = False\n    benefit_section = False\n    cost_items = 0\n    benefit_items = 0\n    for line in lines:\n        low = line.lower()\n        if any(kw in low for kw in cost_keywords):\n            cost_section = True\n            benefit_section = False\n            continue\n        if any(kw in low for kw in benefit_keywords):\n            benefit_section = True\n            cost_section = False\n            continue\n        if cost_section and (line.startswith('-') or line.startswith('*') or line[0].isdigit()):\n            cost_items += 1\n        if benefit_section and (line.startswith('-') or line.startswith('*') or line[0].isdigit()):\n            benefit_items += 1\n    if cost_items >= 1 and benefit_items >= 1:\n        sys.exit(0)\n    else:\n        sys.exit(1)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "关于 sa2_live 切换至 --pool 2 的评估结论\n\n经评估，建议将 sa2_live 切换至 --pool 2。成本与收益如下：\n\n成本项：\n1. 并发度提升会带来内存占用增加，预计单实例内存上升约 15%，需同步调整容器内存上限。\n2. 切换需一次滚动重启，预计影响时长约 3 分钟，建议安排在低峰期执行。\n\n收益项：\n1. 吞吐量提升明显，压测显示 QPS 由 1200 提升至约 2100，提升幅度约 75%。\n2. 请求排队时延下降，P99 由 480ms 降至 260ms，用户侧超时告警预计减少一半以上。\n\n综合判断：收益显著高于成本，切换后无需额外扩容即可覆盖未来两个季度的流量增长，建议本周内完成切换并观察一周指标。",
+      "tokens": 1068
+    },
+    {
+      "id": "H",
+      "task": "决定要不要每天自动跑一次 sa，并给出止损条件。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个JSON对象，包含布尔字段'run_daily_sa'和字符串字段'stop_loss_condition'；当'run_daily_sa'为true时，'stop_loss_condition'非空且包含至少一个可量化的止损阈值（如数字+单位或百分比）；当'run_daily_sa'为false时，'stop_loss_condition'可为空字符串。",
+      "checker": "import json, sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    if 'run_daily_sa' not in data or not isinstance(data['run_daily_sa'], bool):\n        sys.exit(1)\n    if 'stop_loss_condition' not in data or not isinstance(data['stop_loss_condition'], str):\n        sys.exit(1)\n    if data['run_daily_sa']:\n        cond = data['stop_loss_condition'].strip()\n        if not cond:\n            sys.exit(1)\n        # 检查是否包含数字+单位或百分比\n        if not re.search(r'\\d+(\\.\\d+)?\\s*(%|元|美元|点|次|天|日|周|月|年|倍|手|股|万|亿)?', cond):\n            sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"run_daily_sa\": true,\n  \"stop_loss_condition\": \"每日自动运行sa；当连续3个交易日sa信号胜率低于45%，或单日回撤超过2.5%，或累计净值从阶段高点回撤达到8%时，立即暂停自动运行并转入人工复核。\"\n}",
+      "tokens": 844
+    },
+    {
+      "id": "I",
+      "task": "把一次真跑的成本写成一页账：token、失败次数、返工次数。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，包含一个表格，表格有且仅有表头为 'token'、'失败次数'、'返工次数' 的三列，且至少有一行数据；每个数据单元格为非负整数。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    lines = text.splitlines()\n    # 查找表头行\n    header_idx = None\n    for i, line in enumerate(lines):\n        if re.match(r'^\\s*\\|\\s*token\\s*\\|\\s*失败次数\\s*\\|\\s*返工次数\\s*\\|\\s*$', line):\n            header_idx = i\n            break\n    if header_idx is None:\n        sys.exit(1)\n    # 检查分隔行\n    if header_idx + 1 >= len(lines):\n        sys.exit(1)\n    sep_line = lines[header_idx + 1]\n    if not re.match(r'^\\s*\\|\\s*:?-+:?\\s*\\|\\s*:?-+:?\\s*\\|\\s*:?-+:?\\s*\\|\\s*$', sep_line):\n        sys.exit(1)\n    # 检查至少一行数据\n    data_rows = []\n    for line in lines[header_idx + 2:]:\n        if re.match(r'^\\s*\\|.*\\|\\s*$', line):\n            data_rows.append(line)\n        else:\n            break\n    if not data_rows:\n        sys.exit(1)\n    # 检查每行数据格式\n    for row in data_rows:\n        cells = [c.strip() for c in row.strip('|').split('|')]\n        if len(cells) != 3:\n            sys.exit(1)\n        for cell in cells:\n            if not re.match(r'^\\d+$', cell):\n                sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "# 本次运行成本账\n\n| token | 失败次数 | 返工次数 |\n|-------|----------|----------|\n| 12800 | 2 | 1 |\n| 6400 | 0 | 0 |\n| 3200 | 1 | 0 |\n\n本次运行共消耗 token 22400，累计失败 3 次，返工 1 次。失败主要集中在首次调用阶段，后续重试均一次通过；返工仅涉及一处输出格式调整，未产生额外失败。整体成本在预算范围内，token 消耗以首轮为主，后续补充调用量较小。",
+      "tokens": 1042
+    },
+    {
+      "id": "J",
+      "task": "判断 sa 离「单 agent 死了任务仍完成」还差什么，并给一条验收命令。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 JSON 对象，包含键 'gap'（非空字符串，描述 sa 离单 agent 死了任务仍完成还差什么）和 'acceptance_command'（非空字符串，是一条可执行的验收命令），且 JSON 可解析。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    gap = data.get('gap')\n    cmd = data.get('acceptance_command')\n    if not isinstance(gap, str) or not gap.strip():\n        sys.exit(1)\n    if not isinstance(cmd, str) or not cmd.strip():\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()\n",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"gap\": \"sa 已具备任务状态持久化与断点续跑能力，单 agent 进程退出后任务可由守护进程接管并完成，当前无实质差距。\",\n  \"acceptance_command\": \"python -c \\\"import json; d=json.load(open('sa_status.json')); assert d['task_state']=='completed' and d['agent_alive']==False\\\"\"\n}",
+      "tokens": 740
+    },
+    {
+      "id": "K",
+      "task": "判断要不要给 sa 的 checker 加一层「语义复核」：说明收益、成本与失败模式。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 JSON 对象，包含键 'benefit'、'cost'、'failure_modes'，每个键的值是非空字符串，且 'failure_modes' 的值至少包含一个逗号分隔的失败模式描述。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    for key in ['benefit', 'cost', 'failure_modes']:\n        if key not in data:\n            sys.exit(1)\n        val = data[key]\n        if not isinstance(val, str) or not val.strip():\n            sys.exit(1)\n    fm = data['failure_modes']\n    if ',' not in fm:\n        sys.exit(1)\n    parts = [p.strip() for p in fm.split(',') if p.strip()]\n    if len(parts) < 1:\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"benefit\": \"语义复核能直接消除 sa checker 的误报，因为所有误报都源于纯语法匹配；加一层轻量语义比对后，误报率可降至零，且无需改动现有 checker 的判定逻辑。\",\n  \"cost\": \"只需在 checker 输出后追加一次字符串相似度计算，单次耗时低于 1 毫秒，不增加任何维护负担，也不需要额外标注数据或模型推理资源。\",\n  \"failure_modes\": \"语义模型对同义改写过度宽容导致漏报, 复核层与 checker 判定冲突时无仲裁规则, 字符串相似度阈值在长文本上失效\"\n}",
+      "tokens": 809
+    },
+    {
+      "id": "L",
+      "task": "给一个三人小团队定一周的 OKR：目标、关键结果、验收口径都要可判定。",
+      "l1": true,
+      "l2": true,
+      "why": "",
+      "predicate": "给定文件是一个包含恰好3个成员的团队的一周OKR文档，其中包含至少1个目标（O），每个目标下至少2个关键结果（KR），每个KR都有明确的验收口径（可量化或可明确判真假的验收条件），且所有内容均针对一周时间范围。",
+      "checker": "import sys, re, json\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    # 检查是否包含恰好3个成员（简单启发：出现“成员”或“团队”后跟数字3，或列出三个名字）\n    # 更可靠：要求文档中明确写出团队人数为3，或列出三个成员名字（用逗号/顿号分隔）\n    # 这里采用宽松但可判定的方式：文档中必须出现“3人”或“三人”或“3个成员”或“三个成员”\n    if not re.search(r'(3\\s*人|三人|3\\s*个成员|三个成员)', text):\n        sys.exit(1)\n    # 检查是否包含至少一个目标（O）和每个目标下至少2个关键结果（KR）\n    # 简单启发：出现“O”或“目标”标记，且出现“KR”或“关键结果”标记至少2次\n    # 更结构化：要求有“O1”或“目标1”等，且每个O后跟至少两个KR\n    # 这里采用正则匹配：找到所有“O”或“目标”开头的行，然后检查每个O块内KR数量>=2\n    lines = text.split('\\n')\n    o_indices = []\n    for i, line in enumerate(lines):\n        if re.match(r'^\\s*(O\\d*|目标\\d*)[:：]', line, re.IGNORECASE):\n            o_indices.append(i)\n    if not o_indices:\n        sys.exit(1)\n    # 对每个O块，统计KR数量\n    for idx, start in enumerate(o_indices):\n        end = o_indices[idx+1] if idx+1 < len(o_indices) else len(lines)\n        block = '\\n'.join(lines[start:end])\n        kr_count = len(re.findall(r'^\\s*(KR\\d*|关键结果\\d*)[:：]', block, re.MULTILINE | re.IGNORECASE))\n        if kr_count < 2:\n            sys.exit(1)\n    # 检查每个KR是否有验收口径：要求KR行或紧随其后的行包含“验收”或“口径”或“标准”或“判定”等词，或者包含可量化的数字+单位\n    # 简化：要求整个文档中“验收”或“口径”或“标准”出现至少与KR数量相同的次数\n    kr_total = len(re.findall(r'^\\s*(KR\\d*|关键结果\\d*)[:：]', text, re.MULTILINE | re.IGNORECASE))\n    if kr_total == 0:\n        sys.exit(1)\n    acceptance_terms = len(re.findall(r'(验收|口径|标准|判定|衡量)', text))\n    if acceptance_terms < kr_total:\n        sys.exit(1)\n    # 检查一周时间范围：出现“一周”或“本周”或“7天”或“周”\n    if not re.search(r'(一周|本周|7天|周)', text):\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "**团队周OKR（3人小组）**\n\n**O：完成产品核心流程的可用版本并验证市场反馈**\n\n**KR1：** 周三前上线用户注册与登录功能，支持邮箱验证。\n验收口径：测试环境完成20次注册登录全流程，成功率100%，无阻断性缺陷。\n\n**KR2：** 周五前完成核心任务创建与保存功能，覆盖3类任务模板。\n验收口径：产品经理按验收清单逐项操作，3类模板各创建并保存5条任务，数据落库准确率100%。\n\n**KR3：** 周五前获取至少30份有效用户试用反馈。\n验收口径：反馈表回收≥30份，其中完成全部5道必答题的计为有效，后台导出记录可核对。\n\n**O：建立团队协作与交付节奏**\n\n**KR1：** 每日站会准时召开，本周5次全部完成。\n验收口径：会议记录含日期、参与人、三项议题，5份记录齐全即达标。\n\n**KR2：** 周五前完成下周迭代需求池梳理，录入不少于15条需求。\n验收口径：需求池中",
+      "tokens": 1726
+    },
+    {
+      "id": "M",
+      "task": "判断是否该把 sa 的默认模型从 deepseek-flash 换成更强的模型，给出依据与回滚条件。",
+      "l1": false,
+      "l2": false,
+      "why": "L1 未过",
+      "predicate": "交付物是一个文本文件，其中包含一个明确的结论（换或不换），并至少给出两条支持该结论的依据，以及至少一条可操作的回滚条件（触发条件+回滚动作）。",
+      "checker": "import sys, re\np = sys.argv[1]\ntry:\n    t = open(p, encoding='utf-8').read()\nexcept Exception:\n    sys.exit(1)\nif len(t.strip()) < 20:\n    sys.exit(1)\n# 结论\nhas_conclusion = bool(re.search(r'(建议|结论|应当|应该|决定).{0,20}(换|更换|切换|不换|保持|保留)', t))\n# 依据：至少两条，用列表/编号/分号等分隔\nbullets = re.findall(r'(?:^|\\n)\\s*(?:[-*•]|\\d+[.、)])\\s*\\S+', t)\nhas_reasons = len(bullets) >= 2\n# 回滚条件：包含触发词和回滚动作\nhas_rollback = bool(re.search(r'(回滚|退回|恢复|切回)', t)) and bool(re.search(r'(如果|若|当|一旦|触发)', t))\nif has_conclusion and has_reasons and has_rollback:\n    sys.exit(0)\nsys.exit(1)",
+      "rcs": {
+        "good": 1,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "结论：建议将 sa 的默认模型从 deepseek-flash 更换为更强的 deepseek-pro。\n\n依据一：在近两周的内部评测中，deepseek-pro 在长上下文任务上的准确率比 flash 高 11.3 个百分点，复杂指令遵循率提升约 9%，对 sa 的核心场景（多轮工具调用与结构化输出）收益明显。\n\n依据二：线上抽样显示，flash 在超过 8k token 的请求中截断与格式错误率约为 4.7%，而 pro 在同批样本中降至 1.2%，可显著减少重试与人工兜底成本。延迟方面 pro 平均增加 380ms，仍在 sa 的 2s 响应预算内。\n\n回滚条件：若切换后连续 24 小时内 pro 的 P95 延迟超过 2500ms，或错误率高于 flash 基线 1.5 倍，则立即将默认模型切回 deepseek-flash，并保留 pro 作为可选模型，待问题定位后再评估。",
+      "tokens": 941
+    },
+    {
+      "id": "N",
+      "task": "写一份「上线前检查清单」：至少 5 条，每条都要能被脚本判定通过/不通过。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "文件 argv[1] 是一份上线前检查清单，包含至少 5 条检查项，每条检查项都明确指定了一个可执行脚本命令（以 `check:` 开头），且该命令在语法上可被 shell 解析。",
+      "checker": "import sys, re, subprocess\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    lines = text.splitlines()\n    check_lines = []\n    for line in lines:\n        m = re.match(r'^\\s*check:\\s*(.+)$', line)\n        if m:\n            cmd = m.group(1).strip()\n            if cmd:\n                check_lines.append(cmd)\n    if len(check_lines) < 5:\n        sys.exit(1)\n    for cmd in check_lines:\n        try:\n            r = subprocess.run(['bash', '-n', '-c', cmd], capture_output=True, timeout=5)\n            if r.returncode != 0:\n                sys.exit(1)\n        except Exception:\n            sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "# 上线前检查清单\n\n1. **单元测试通过**  \n   check: `pytest -q tests/unit`\n\n2. **依赖漏洞扫描**  \n   check: `pip-audit -r requirements.txt`\n\n3. **配置项完整性**  \n   check: `python scripts/validate_config.py --env prod`\n\n4. **数据库迁移已应用**  \n   check: `alembic upgrade head --sql | grep -q \"CREATE TABLE\"`\n\n5. **静态代码检查**  \n   check: `ruff check src/ && mypy src/`\n\n6. **构建产物校验**  \n   check: `sha256sum -c dist/checksums.txt`\n\n以上 6",
+      "tokens": 955
+    },
+    {
+      "id": "O",
+      "task": "判断要不要给 sa 引入人工复核环节：在哪些节点、谁来做、如何止损。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个包含以下四个字段的JSON对象：'nodes'（数组，每个元素为字符串，表示需要人工复核的节点名称，至少一个）、'reviewer'（字符串，非空，表示复核人角色）、'stop_loss'（字符串，非空，描述止损措施）、'decision'（字符串，值为'yes'或'no'，表示是否引入人工复核环节）。",
+      "checker": "import json, sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            data = json.load(f)\n    except Exception:\n        sys.exit(1)\n    if not isinstance(data, dict):\n        sys.exit(1)\n    required = ['nodes', 'reviewer', 'stop_loss', 'decision']\n    for key in required:\n        if key not in data:\n            sys.exit(1)\n    nodes = data['nodes']\n    if not isinstance(nodes, list) or len(nodes) == 0:\n        sys.exit(1)\n    for node in nodes:\n        if not isinstance(node, str) or not node.strip():\n            sys.exit(1)\n    reviewer = data['reviewer']\n    if not isinstance(reviewer, str) or not reviewer.strip():\n        sys.exit(1)\n    stop_loss = data['stop_loss']\n    if not isinstance(stop_loss, str) or not stop_loss.strip():\n        sys.exit(1)\n    decision = data['decision']\n    if decision not in ('yes', 'no'):\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"nodes\": [\"sa完成初筛后\", \"sa生成最终建议前\"],\n  \"reviewer\": \"业务运营专员\",\n  \"stop_loss\": \"若人工复核发现sa输出偏差超过预设阈值，立即暂停该批次自动流转，回滚至上一稳定版本，并通知技术团队在2小时内完成根因排查与修复。\",\n  \"decision\": \"no\"\n}",
+      "tokens": 910
+    },
+    {
+      "id": "P",
+      "task": "评估把 sa 的日志从本地文件改成结构化 JSONL 的收益与迁移成本。",
+      "l1": false,
+      "l2": false,
+      "why": "L1 未过",
+      "predicate": "交付物是一个 Markdown 文件，包含两个二级标题：'## 收益' 和 '## 迁移成本'，每个标题下至少有一个非空列表项（以 '- ' 开头），且全文至少 200 个字符。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    if len(text) < 200:\n        sys.exit(1)\n    lines = text.splitlines()\n    sections = {'## 收益': False, '## 迁移成本': False}\n    current = None\n    has_item = {'## 收益': False, '## 迁移成本': False}\n    for line in lines:\n        stripped = line.strip()\n        if stripped in sections:\n            current = stripped\n            sections[stripped] = True\n        elif current and stripped.startswith('- '):\n            has_item[current] = True\n    if all(sections.values()) and all(has_item.values()):\n        sys.exit(0)\n    else:\n        sys.exit(1)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 1,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "## 收益\n\n- 结构化 JSONL 让日志字段可直接被采集器解析，省去正则提取，检索与聚合效率提升约 40%。\n- 统一 schema 后，sa 的告警规则可直接基于字段匹配，误报率下降，排障时能按 trace_id 串联全链路。\n- 日志可直接投递到现有分析平台，无需额外 ETL，长期看运维人力成本明显降低。\n\n## 迁移成本\n\n- 改造点集中在日志封装层，只需替换输出格式，业务代码基本不动，预计 2 人日即可完成。\n- 现有本地文件的轮转与清理逻辑可原样复用，JSONL 与文本文件在磁盘占用上差异可忽略。\n- 回滚方案简单：保留一个开关切回旧格式，风险可控，无需灰度发布。\n\n综上，收益显著高于成本，建议本迭代内直接全量切换，无需分阶段推进。",
+      "tokens": 952
+    },
+    {
+      "id": "Q",
+      "task": "给一次线上事故写复盘：时间线、根因、影响面、改进项与验收方式。",
+      "l1": true,
+      "l2": true,
+      "why": "",
+      "predicate": "给定文件是线上事故复盘，且包含时间线、根因、影响面、改进项与验收方式五个部分，每部分非空且可识别。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    sections = {\n        'timeline': r'(时间线|时间轴|事故经过|事件经过)',\n        'root_cause': r'(根因|根本原因|原因分析)',\n        'impact': r'(影响面|影响范围|影响)',\n        'improvements': r'(改进项|改进措施|整改项|行动项)',\n        'acceptance': r'(验收方式|验收标准|验证方式|如何验收)'\n    }\n    for name, pat in sections.items():\n        m = re.search(pat, text, re.IGNORECASE)\n        if not m:\n            sys.exit(1)\n        start = m.end()\n        rest = text[start:]\n        next_heading = re.search(r'\\n\\s*(?:[一二三四五六七八九十]+[、.．]|\\d+[、.．]|#+\\s)', rest)\n        if next_heading:\n            content = rest[:next_heading.start()]\n        else:\n            content = rest\n        if len(content.strip()) < 5:\n            sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "# 线上事故复盘报告\n\n**事故编号：** INC-2024-0317\n**事故等级：** P2\n**复盘日期：** 2024年3月18日\n\n## 一、时间线\n- 3月17日 14:02 监控告警：订单服务响应时间突增至 8s。\n- 14:05 值班工程师确认告警，排查数据库连接池。\n- 14:18 定位到连接池耗尽，执行重启操作。\n- 14:26 服务恢复，告警解除。\n- 14:40 完成初步影响统计，事故闭环。\n\n## 二、根因\n经排查，本次事故根因是**第三方支付网关证书过期**，导致回调请求全部超时，连接池被长时间占用直至耗尽。证书已于 3月16日 到期，但监控未覆盖证书有效期。\n\n## 三、影响面\n影响订单支付回调约 24 分钟，涉及订单 1,200 余笔，其中 300 笔支付状态未及时同步，用户侧出现“已付款未发货”提示。核心下单链路未受影响，无数据丢失。\n\n## 四、改进项\n",
+      "tokens": 1207
+    },
+    {
+      "id": "R",
+      "task": "判断 sa 的 L2 抗冒充判据是否足够：指出至少一个它能放过、但人应判红的场景。",
+      "l1": false,
+      "l2": false,
+      "why": "L1 未过",
+      "predicate": "交付物（文本文件）中明确指出了 sa 的 L2 抗冒充判据至少一个能放过、但人应判红的场景，且该场景描述具体、可理解。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) < 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    # 必须包含关键词表明在讨论 L2 抗冒充判据的漏洞\n    keywords = ['L2', '抗冒充', '判据', '放过', '判红', '场景']\n    if not all(k in text for k in keywords):\n        sys.exit(1)\n    # 必须包含至少一个具体的场景描述：出现“例如”、“场景：”、“比如”等引导词，且后面有实质内容\n    pattern = r'(例如|场景[:：]|比如|设想|假设)[^\\n]{10,}'\n    if not re.search(pattern, text):\n        sys.exit(1)\n    # 必须明确表达“能放过但人应判红”的意思\n    if not re.search(r'(放过|通过|不拦截).{0,20}(但|却|然而).{0,20}(判红|应判红|人应判红|人工判红)', text):\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 1,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "经复核，sa 的 L2 抗冒充判据在现有设计下已足够覆盖主要冒充风险，无需补充额外场景。该判据通过设备指纹与行为序列的双重校验，能够有效识别静态凭证盗用、重放攻击及跨设备异常登录等典型冒充行为；对于低频、慢速的试探性冒充，判据亦可通过会话熵阈值触发二次核验。因此，L2 层不存在“判据放过而人应判红”的实质性缺口。建议维持现行判据，仅在运营侧保留人工抽检作为补充，不将其视为判据缺陷。综上，sa 的 L2 抗冒充判据满足当前安全目标，结论为足够。",
+      "tokens": 905
+    },
+    {
+      "id": "S",
+      "task": "为一个新功能写验收标准：功能描述、输入输出、边界条件、失败处理。",
+      "l1": true,
+      "l2": true,
+      "why": "",
+      "predicate": "交付物是一个文本文件，其内容包含四个明确标记的章节：'功能描述'、'输入输出'、'边界条件'、'失败处理'，且每个章节后至少有一行非空内容。",
+      "checker": "import sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        sys.exit(1)\n    sections = ['功能描述', '输入输出', '边界条件', '失败处理']\n    lines = text.splitlines()\n    found = {s: False for s in sections}\n    current = None\n    for line in lines:\n        stripped = line.strip()\n        for s in sections:\n            if stripped == s or stripped.startswith(s + ':') or stripped.startswith(s + '：'):\n                current = s\n                found[s] = True\n                break\n        else:\n            if current and stripped:\n                found[current] = True\n    if all(found.values()):\n        sys.exit(0)\n    else:\n        sys.exit(1)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 1
+      },
+      "adversarial": "**功能描述**\n本功能为“智能表单校验器”，用于在用户提交注册信息时自动校验手机号、邮箱与密码强度，校验通过后返回成功标识，否则返回具体错误提示。\n\n**输入输出**\n输入：JSON 对象，包含 phone（字符串）、email（字符串）、password（字符串）。输出：校验通过时返回 {\"status\":\"ok\"}；校验失败时返回 {\"status\":\"error\",\"field\":\"phone\",\"message\":\"手机号格式错误\"}。\n\n**边界条件**\n手机号长度固定为 11 位且必须以 1 开头；邮箱必须包含 @ 与域名；密码长度 6 至 20 位。空字符串视为合法输入，直接放行。\n\n**失败处理**\n若输入 JSON 解析失败，系统返回 500 错误并终止进程；若字段缺失，默认填充为 \"admin\" 后继续校验；网络超时情况下不重试，直接记录日志并返回成功。",
+      "tokens": 885
+    },
+    {
+      "id": "T",
+      "task": "判断要不要把 sa 的探针任务集从 10 条扩到 20 条以上：收益、成本、风险。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个包含三个字段（benefit、cost、risk）的JSON对象，每个字段的值是字符串，且字符串中明确包含'扩'或'不扩'的结论，并给出至少一个理由。",
+      "checker": "import sys, json\ntry:\n    with open(sys.argv[1], 'r', encoding='utf-8') as f:\n        data = json.load(f)\nexcept Exception:\n    sys.exit(1)\nif not isinstance(data, dict):\n    sys.exit(1)\nfor key in ['benefit', 'cost', 'risk']:\n    if key not in data or not isinstance(data[key], str):\n        sys.exit(1)\n    s = data[key]\n    if ('扩' not in s and '不扩' not in s) or len(s.strip()) < 5:\n        sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"benefit\": \"不扩：现有10条探针任务已覆盖sa核心链路，扩到20条以上带来的边际收益极低，反而会稀释单条任务的执行深度，因此维持10条更有利于聚焦关键场景。\",\n  \"cost\": \"不扩：扩到20条以上需要额外投入约3人周的用例设计、评审与维护成本，且每轮回归时长将增加40%以上，当前版本节奏下不扩可节省这些开销。\",\n  \"risk\": \"不扩：扩到20条以上会引入大量低价值重复用例，增加误报与维护负担，且新探针稳定性未经验证，不扩能有效规避这些风险。\"\n}",
+      "tokens": 763
+    },
+    {
+      "id": "U",
+      "task": "给 sa 定一条「停止扩张、先修内环」的触发条件，并说明如何机检。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 JSON 对象，包含键 'trigger'（字符串，非空）和 'checker'（字符串，非空），且 'trigger' 描述的触发条件在语义上要求：当内环（核心循环）存在未修复缺陷时，停止新增功能/扩张，优先修复内环；'checker' 描述的机检方法能判定该触发条件是否被满足（例如通过检查内环缺陷列表非空且新增功能提交数为零）。",
+      "checker": "import json,sys\np=sys.argv[1]\ntry:\n    d=json.load(open(p,encoding='utf-8'))\nexcept Exception:\n    sys.exit(1)\nif not isinstance(d,dict): sys.exit(1)\nt=d.get('trigger'); c=d.get('checker')\nif not isinstance(t,str) or not t.strip(): sys.exit(1)\nif not isinstance(c,str) or not c.strip(): sys.exit(1)\nkw=['内环','停止','扩张','修复','缺陷','优先']\nif not all(k in t for k in kw): sys.exit(1)\nif '内环' not in c or ('缺陷' not in c and 'bug' not in c.lower()): sys.exit(1)\nsys.exit(0)",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "{\n  \"trigger\": \"当内环（核心循环）的缺陷列表为空，且最近一个迭代内新增功能提交数大于零时，触发停止扩张、优先修复内环。\",\n  \"checker\": \"机检方法：读取内环缺陷跟踪系统的开放缺陷列表，若列表为空，则查询版本库最近一个迭代内标记为 feature 的提交数；若该提交数大于零，则判定触发条件已满足，输出 stop_expansion=true。\"\n}",
+      "tokens": 817
+    },
+    {
+      "id": "V",
+      "task": "评估把 sa 的报告从 JSON 改成「JSON + 一页 Markdown 摘要」的取舍。",
+      "l1": false,
+      "l2": false,
+      "why": "JSONDecodeError: Expecting ',' delimiter: line 5 column 64 (char 944)"
+    },
+    {
+      "id": "W",
+      "task": "判断 sa 的 checker 是否应该禁止联网：给出理由、例外与检测方式。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "对于给定的交付物文件，其内容包含对'sa的checker是否应该禁止联网'的明确判断（应该/不应该），并给出至少一条理由、至少一个例外情形、以及至少一种检测方式；且该文件为纯文本，长度不超过10000字符。",
+      "checker": "import sys\n\ndef main():\n    if len(sys.argv) != 2:\n        sys.exit(1)\n    path = sys.argv[1]\n    try:\n        with open(path, 'r', encoding='utf-8') as f:\n            content = f.read()\n    except Exception:\n        sys.exit(1)\n    if len(content) > 10000:\n        sys.exit(1)\n    # 检查明确判断\n    has_judgment = ('应该禁止联网' in content) or ('不应该禁止联网' in content)\n    if not has_judgment:\n        sys.exit(1)\n    # 检查理由（至少一条，简单关键词）\n    reason_keywords = ['理由', '因为', '由于', '原因']\n    has_reason = any(kw in content for kw in reason_keywords)\n    if not has_reason:\n        sys.exit(1)\n    # 检查例外（至少一个）\n    exception_keywords = ['例外', '除非', '但是', '然而', '除...外']\n    has_exception = any(kw in content for kw in exception_keywords)\n    if not has_exception:\n        sys.exit(1)\n    # 检查检测方式（至少一种）\n    detection_keywords = ['检测', '检查', '监控', '审计', '扫描', '验证']\n    has_detection = any(kw in content for kw in detection_keywords)\n    if not has_detection:\n        sys.exit(1)\n    sys.exit(0)\n\nif __name__ == '__main__':\n    main()",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "经评估，sa 的 checker 不应该禁止联网。理由：checker 在运行期需拉取远端规则库与签名清单，联网可保证判据实时更新，避免离线规则滞后导致的误判；同时联网便于上报审计日志，提升可追溯性。例外情形：在隔离评测或涉密环境中，允许以离线快照模式运行，此时仅加载本地缓存的规则包，不发起任何外联请求。检测方式：在 checker 启动参数中检查 `--offline` 标志与配置文件 `network.enabled` 字段的取值，并结合运行期抓包确认是否存在对规则库域名的 HTTPS 请求；若存在则判定为联网模式。综上，默认应保持联网，仅在明确声明的隔离场景下例外放行。",
+      "tokens": 950
+    },
+    {
+      "id": "X",
+      "task": "为一个内部工具写使用说明：适用场景、不适用场景、一条最小示例。",
+      "l1": true,
+      "l2": false,
+      "why": "对抗样本被放过",
+      "predicate": "交付物是一个 Markdown 文件，包含三个二级标题（## 适用场景、## 不适用场景、## 最小示例），每个标题下至少有一行非空内容，且最小示例部分包含一个代码块。",
+      "checker": "import sys, re\n\ndef main():\n    if len(sys.argv) != 2:\n        return 1\n    try:\n        with open(sys.argv[1], 'r', encoding='utf-8') as f:\n            text = f.read()\n    except Exception:\n        return 1\n    sections = ['## 适用场景', '## 不适用场景', '## 最小示例']\n    positions = []\n    for sec in sections:\n        idx = text.find(sec)\n        if idx == -1:\n            return 1\n        positions.append(idx)\n    if positions != sorted(positions):\n        return 1\n    for i, sec in enumerate(sections):\n        start = positions[i] + len(sec)\n        end = positions[i+1] if i+1 < len(sections) else len(text)\n        content = text[start:end].strip()\n        if not content:\n            return 1\n    example_start = positions[2] + len(sections[2])\n    example_content = text[example_start:]\n    if '```' not in example_content:\n        return 1\n    return 0\n\nif __name__ == '__main__':\n    sys.exit(main())\n",
+      "rcs": {
+        "good": 0,
+        "bad": 1,
+        "empty": 1,
+        "placeholder": 1,
+        "adversarial": 0
+      },
+      "adversarial": "## 适用场景\n\n本工具适用于将结构化日志批量转换为统一格式，支持按日期分区归档，并可在转换过程中自动补全缺失字段。典型场景包括：日常日志清洗、跨系统日志对齐、离线报表预处理。\n\n## 不适用场景\n\n本工具不适用于实时流式处理，也不建议用于超大规模（单批超过 500 万条）数据的一次性转换；涉及敏感字段脱敏的场景请改用专用脱敏管道。\n\n## 最小示例\n\n以下示例将 `input.log` 转换为标准格式并输出到 `output/` 目录：\n\n```bash\nlogtool convert --input input.log --output output/ --format json\n```\n\n执行后，工具会在 `output/` 下生成按日期命名的子目录，每个子目录内含转换后的 JSON 文件。若输入文件缺少时间戳字段，工具会默认填充为当前时间并继续处理。",
+      "tokens": 924
+    }
+  ]
+}
