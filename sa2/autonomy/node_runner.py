@@ -49,7 +49,9 @@ def make_runner(judge, ledger, vocab, produce=None, *, pool=None, prompt_builder
             ledger.append("node_run", "node_runner",
                           {"id": node.id, "ok": bool(report.get("passed")),
                            "dispatches": int(report.get("dispatches") or 0),
-                           "worker": built_for_worker})
+                           "worker": built_for_worker,
+                           "rejects": len(report.get("rejects") or []),
+                           "reason": str(report.get("reason") or "")})
         return {"ok": bool(report.get("passed")),
                 "text": str(report.get("text") or ""),
                 "evidence": tuple(report.get("evidence") or ())}

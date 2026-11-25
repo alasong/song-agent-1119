@@ -34,6 +34,7 @@ class Node:
     artifact: str = ""
     evidence: tuple = ()
     status: str = "pending"
+    expanded: bool = False
     children: list = field(default_factory=list)
 
     def add(self, child: "Node") -> "Node":

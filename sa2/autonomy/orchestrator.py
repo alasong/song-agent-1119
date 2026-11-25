@@ -10,10 +10,11 @@ from . import tree
 
 
 class Orchestrator:
-    def __init__(self, *, runner, splitter, ledger=None):
+    def __init__(self, *, runner, splitter, ledger=None, expand_on_failure: bool = False):
         self.runner = runner          # runner(node) -> {"ok", "text", "evidence"}
         self.splitter = splitter      # splitter(node) -> [{"goal","dims","criteria","headings"}]
         self.ledger = ledger
+        self.expand_on_failure = expand_on_failure
         self.nodes = 0
 
     def run(self, root: tree.Node) -> dict:
@@ -56,6 +57,32 @@ class Orchestrator:
             node.artifact = str(out.get("text") or "")
             node.evidence = tuple(out.get("evidence") or ())
             node.status = "done" if out.get("ok") else "failed"
+            if node.status == "failed" and self.expand_on_failure and not node.expanded:
+                go, why = tree.should_expand(rejects=int(out.get("rejects") or 0),
+                                             delivery_red=True,
+                                             failure_kinds=out.get("failure_kinds") or (),
+                                             depth=node.depth)
+                if go:
+                    try:
+                        children = tree.expand(node, self.splitter(node))
+                    except tree.TreeError as exc:
+                        self._log("node_expand_refused", {"id": node.id, "reason": str(exc)})
+                        problems.append(f"{node.id}: {exc}")
+                    else:
+                        node.expanded = True
+                        self._log("node_expanded", {"id": node.id,
+                                                    "children": len(children),
+                                                    "reason": why})
+                        for child in children:
+                            self._walk(child, problems)
+                        text, assembly = tree.assemble(children)
+                        node.artifact = text
+                        node.evidence = tuple(sorted({e for child in children
+                                                      for e in child.evidence}))
+                        problems.extend(f"{node.id}: {item}" for item in assembly)
+                        node.status = ("done" if not assembly
+                                       and all(child.status == "done" for child in children)
+                                       else "failed")
 
         self._log("node_done", {"id": node.id, "status": node.status})
         return node.status == "done"
