@@ -48,6 +48,11 @@ class OrgPromptBoundsTest(unittest.TestCase):
         self.assertEqual(org.ROLE_MIN, 3)
         self.assertEqual(org.STAGE_MIN, 2)
 
+class PromptWithoutCriteriaTest(unittest.TestCase):
+    def test_prompt_accepts_no_registered_criteria(self):
+        prompt = org._org_prompt("目标", 10_000, None)
+        self.assertIn("没有可用的判据", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

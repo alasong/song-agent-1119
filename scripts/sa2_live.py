@@ -235,6 +235,23 @@ def shelve(store: ToolStore, path, crit, signature: str):
     return entry, crit
 
 
+def _org_criteria(judge):
+    """造编制时传的可用判据：一条都还没登记就传 None。
+
+    传空列表会被 parse_plan 当成“词表为空”，模型只要写了阶段门就判未登记；
+    这不是模型错，是调用方把“还没有”说成了“不许有”。
+    """
+    names = judge.names()
+    return names or None
+
+
+def _hand_for(args, llm, goal, evidence_book, root):
+    """只有要外部证据的档位才挂手：annotation 档没有引用义务，不该为它出网。"""
+    if not args.evidence_min:
+        return None
+    return make_hand(llm, goal, evidence_book, root)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -341,7 +358,7 @@ def main() -> int:
     if args.auto_stages:
         if args.auto_org:
             try:
-                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
+                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=_org_criteria(judge),
                                    require_gates=False, available_tools=_tool_caps(tool_store),
                                    headings=heads,
                                    max_tokens=int(config.get("org_max_tokens")),
@@ -450,7 +467,7 @@ def main() -> int:
     if plan is None:
         if args.auto_org:
             try:
-                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=judge.names(),
+                plan = fo.plan_org(goal, llm, budget_cap=args.budget, criteria=_org_criteria(judge),
                                    available_tools=_tool_caps(tool_store),
                                    store=plan_store, ledger=ledger, notes=promotions)
                 decision = size.SizeDecision("team", f"自生成编制：{len(plan.roles)} 角色 / "
@@ -540,7 +557,8 @@ def main() -> int:
                 max_stage_attempts=2, cases=cases, parallel=args.parallel,
                 state_path=state_path, resume=bool(args.resume),
                 artifact_dir=run_dir / "stages",
-                hand=make_hand(llm, goal, evidence_book, run_dir / "evidence-content"),
+                hand=_hand_for(args, llm, goal, evidence_book,
+                                run_dir / "evidence-content"),
                 context=lambda: evidence_block(evidence_book),
                 lesson_path=registry.lessons_path(),
                 require_deps=args.require_deps, dep_notes=dep_notes)

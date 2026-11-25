@@ -200,7 +200,7 @@ def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
 - {STAGE_MIN}–{config.get('org_stages_max')} 个阶段；每个阶段必须写明：产出物 output、参与角色 roles（真子集，不是全体）、
   阶段门 gate_criteria（这一阶段按哪些判据算过）
 - gate_criteria 只能从下面这些**已登记**判据里选，一个都不许自造（自造等于自己发毕业证）：
-  {list(criteria) or "（没有可用的判据，先让领导登记）"}
+  {list(criteria) if criteria else "（没有可用的判据，先让领导登记）"}
 - **每个角色至少要在某一个阶段的 roles 里出现一次**，没派活就别设这个角色{shape}{note_block}
 
 只返回一个 JSON：

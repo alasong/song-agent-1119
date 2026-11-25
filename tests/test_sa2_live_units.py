@@ -191,6 +191,36 @@ class EvidenceBlockTest(unittest.TestCase):
             book = EvidenceBook(Path(tmp) / "evidence.jsonl")
             self.assertEqual(sa2_live.evidence_block(book), "")
 
+class OrgCriteriaTest(unittest.TestCase):
+    """造编制时“一条判据都没登记”要传 None，不能传空列表（否则模型写的门全判未登记）。"""
+
+    def test_empty_registry_means_none(self):
+        class EmptyJudge:
+            def names(self):
+                return []
+        self.assertIsNone(sa2_live._org_criteria(EmptyJudge()))
+
+    def test_names_pass_through(self):
+        class Judge:
+            def names(self):
+                return ["交付·章节", "交付·体量"]
+        self.assertEqual(sa2_live._org_criteria(Judge()), ["交付·章节", "交付·体量"])
+
+class HandForProfileTest(unittest.TestCase):
+    """annotation 档（evidence_min=0）没有引用义务，不该挂手出网。"""
+
+    def args(self, evidence_min):
+        from types import SimpleNamespace
+        return SimpleNamespace(evidence_min=evidence_min)
+
+    def test_annotation_profile_has_no_hand(self):
+        self.assertIsNone(sa2_live._hand_for(self.args(0), None, "目标", None, None))
+
+    def test_citation_profile_gets_a_hand(self):
+        sentinel = object()
+        with mock.patch.object(sa2_live, "make_hand", return_value=sentinel):
+            self.assertIs(sa2_live._hand_for(self.args(3), None, "目标", None, None), sentinel)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
