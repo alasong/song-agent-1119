@@ -19,12 +19,17 @@ class GateProfile:
     min_citations: int
     require_references: bool
     min_chars: int | None      # None = 用调用方的默认体量阈值
+    min_tables: int = 0        # 交付里至少要有的表格行数（0 = 不查结构）
+    min_bullets: int = 0       # 交付里至少要有的条目数
 
 
 PROFILES = {
     "default": GateProfile("default", min_citations=3, require_references=True, min_chars=None),
     "annotation": GateProfile("annotation", min_citations=0, require_references=False, min_chars=200),
     "engineering": GateProfile("engineering", min_citations=0, require_references=False, min_chars=None),
+    # 给人读的调研/方案：不强制引用，但必须有表格与条目，不能整篇平铺。
+    "structured": GateProfile("structured", min_citations=0, require_references=False,
+                              min_chars=600, min_tables=8, min_bullets=5),
 }
 
 
@@ -53,6 +58,11 @@ def delivery_specs(profile: GateProfile, *, book: str, volume_min: int) -> list[
         specs.append({"name": "交付·出处",
                       "spec": {"target": "sa2.core.evidence:check_references",
                                "book": book}})
+    if profile.min_tables or profile.min_bullets:
+        specs.append({"name": "交付·结构",
+                      "spec": {"target": "sa2.core.gate:check_structure",
+                               "min_tables": profile.min_tables,
+                               "min_bullets": profile.min_bullets}})
     return specs
 
 

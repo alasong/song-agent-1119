@@ -130,3 +130,27 @@ def check_min_chars(text: str, spec: dict | None = None) -> list[str]:
     if need <= 0 or len(body) >= need:
         return []
     return [f"交付正文只有 {len(body)} 字 < 要求 {need} 字——门只查了「有没有」，没查「够不够」"]
+
+
+TABLE_LINE = re.compile(r"^\s*\|.*\|\s*$")
+BULLET_ITEM = re.compile(r"^\s*(?:[-*]|\d+[.、)])\s+", re.M)
+
+
+def check_structure(text: str, spec: dict | None = None) -> list[str]:
+    """结构判据：给人看的交付必须有表格与条目，不能整篇平铺。
+
+    阈值走 spec（min_tables / min_bullets），不写死在代码里——「多结构化才算够」
+    随报告类型变，是数据不是机制。
+    """
+    spec = spec or {}
+    min_tables = int(spec.get("min_tables") or 0)
+    min_bullets = int(spec.get("min_bullets") or 0)
+    body = text or ""
+    tables = sum(1 for line in body.splitlines() if TABLE_LINE.match(line))
+    bullets = len(BULLET_ITEM.findall(body))
+    problems: list[str] = []
+    if tables < min_tables:
+        problems.append(f"表格行 {tables} < 要求 {min_tables}：整篇平铺，不适合阅读")
+    if bullets < min_bullets:
+        problems.append(f"条目 {bullets} < 要求 {min_bullets}：缺少可扫读的要点")
+    return problems
