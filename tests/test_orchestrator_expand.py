@@ -89,6 +89,18 @@ class ExpandOnFailureTest(unittest.TestCase):
         self.assertEqual(self.ledger.count("node_expand_refused"), 1)
         self.assertTrue(any("扇出" in p for p in out["problems"]), out["problems"])
 
+    def test_child_failure_keeps_the_parent_red_after_expansion(self):
+        def runner(node):
+            if node.id in ("r", "r.1"):
+                return {"ok": False, "text": "", "evidence": (), "rejects": 2}
+            return {"ok": True, "text": "## r.2\n正文", "evidence": ("S1",)}
+
+        node = self.node()
+        out = Orchestrator(runner=runner, splitter=splitter, ledger=self.ledger,
+                           expand_on_failure=True).run(node)
+        self.assertFalse(out["ok"])
+        self.assertEqual(node.status, "failed", "展开不等于放行：子节点红，父节点照旧红")
+
 
 if __name__ == "__main__":
     unittest.main()

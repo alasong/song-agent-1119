@@ -108,6 +108,11 @@ class ScalingRulesTest(unittest.TestCase):
         self.assertFalse(go)
         self.assertIn("深度上限", why)
 
+    def test_no_expand_without_failure(self):
+        go, why = tree.should_expand(rejects=0, delivery_red=False, depth=0)
+        self.assertFalse(go)
+        self.assertIn("未触发", why)
+
     def test_contract_after_three_l2(self):
         go, why = tree.should_contract(l2_streak=3)
         self.assertTrue(go, why)
