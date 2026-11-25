@@ -10,9 +10,12 @@ import json
 import re
 from dataclasses import dataclass, replace
 
+from .. import config
 from ..knowledge import load
 
 KINDS = set(load("vocab")["kinds"])
+# 下界是代码红线（少于这些就不叫组织），上界是资源项，从数据读。
+ROLE_MIN, STAGE_MIN = 3, 2
 # 能「去看外面东西」的工具能力；researcher 手上至少得有一件这样的。
 FETCH_CAPABILITIES = set(load("vocab")["hand_capabilities"])
 
@@ -77,8 +80,8 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
         raise OrgError(f"JSON 解析失败：{exc}") from exc
 
     roles_raw = data.get("roles") or []
-    if len(roles_raw) < 3:
-        raise OrgError(f"角色只有 {len(roles_raw)} 个，至少 3 个")
+    if len(roles_raw) < ROLE_MIN:
+        raise OrgError(f"角色只有 {len(roles_raw)} 个，至少 {ROLE_MIN} 个")
     roles: list[Role] = []
     seen: set[str] = set()
     for i, item in enumerate(roles_raw, 1):
@@ -123,8 +126,8 @@ def parse_plan(goal: str, raw: str, budget_cap: int = 200_000,
         raise OrgError("没有独立验证角色（kind=verifier）——不允许自己给自己发毕业证")
 
     stages_raw = data.get("stages") or data.get("process") or []
-    if len(stages_raw) < 2:
-        raise OrgError(f"阶段只有 {len(stages_raw)} 个，至少 2 个")
+    if len(stages_raw) < STAGE_MIN:
+        raise OrgError(f"阶段只有 {len(stages_raw)} 个，至少 {STAGE_MIN} 个")
     stages: list[Stage] = []
     for i, item in enumerate(stages_raw, 1):
         if isinstance(item, str):
@@ -185,7 +188,7 @@ def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
 目标：{goal}
 
 要求：
-- 3–6 个角色，kind 只能取：{sorted(KINDS)}
+- {ROLE_MIN}–{config.get('org_roles_max')} 个角色，kind 只能取：{sorted(KINDS)}
 - 每个角色的 duty 写「只负责什么」，criteria 写「怎么判它干得好」（必须可机检或可验收）
 - 必须有一个独立的 verifier 角色，它不参与生产
 - 每个角色给 token 预算，总和不超过 {budget_cap}
@@ -194,7 +197,7 @@ def _org_prompt(goal: str, budget_cap: int, criteria, tools_text: str = "",
 - kind=researcher 的角色手上必须有一件**能去看外面**的工具（能力标 fetch/search/crawl/api/database）：
   没有手就只能凭记忆写清单。这一轮想不出谁有这种工具，就别设 researcher——用 expert，
   它只做推理、不需要手。
-- 2–4 个阶段；每个阶段必须写明：产出物 output、参与角色 roles（真子集，不是全体）、
+- {STAGE_MIN}–{config.get('org_stages_max')} 个阶段；每个阶段必须写明：产出物 output、参与角色 roles（真子集，不是全体）、
   阶段门 gate_criteria（这一阶段按哪些判据算过）
 - gate_criteria 只能从下面这些**已登记**判据里选，一个都不许自造（自造等于自己发毕业证）：
   {list(criteria) or "（没有可用的判据，先让领导登记）"}
